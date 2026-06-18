@@ -103,7 +103,15 @@ func TestServerAuthHandlerInvalid(t *testing.T) {
 	c.Value = fmt.Sprintf("bad|%s|%s", parts[1], parts[2])
 
 	res, _ = doHttpRequest(req, c)
-	assert.Equal(401, res.StatusCode, "invalid cookie should not be authorised")
+	assert.Equal(307, res.StatusCode, "invalid cookie should trigger a redirect")
+	cookies := res.Cookies()
+	cleared := false
+	for _, ck := range cookies {
+		if ck.Name == "_forward_auth" && ck.Value == "" && ck.Expires.Before(time.Now()) {
+			cleared = true
+		}
+	}
+	assert.True(cleared, "invalid cookie should be cleared")
 
 	// Should validate email
 	req = newDefaultHttpRequest("/foo")

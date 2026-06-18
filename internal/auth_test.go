@@ -60,6 +60,13 @@ func TestAuthValidateCookie(t *testing.T) {
 	email, err := ValidateCookie(r, c)
 	assert.Nil(err, "valid request should not return an error")
 	assert.Equal("test@test.com", email, "valid request should return user email")
+
+	// Should reject cookie generated for another host (cross-domain protection)
+	r2, _ := http.NewRequest("GET", "http://another.com", nil)
+	_, err = ValidateCookie(r2, c)
+	if assert.Error(err) {
+		assert.Equal("Invalid cookie mac", err.Error())
+	}
 }
 
 func TestAuthValidateEmail(t *testing.T) {

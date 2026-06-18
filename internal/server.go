@@ -108,7 +108,8 @@ func (s *Server) AuthHandler(providerName, rule string) http.HandlerFunc {
 				s.authRedirect(logger, w, r, p)
 			} else {
 				logger.WithField("error", err).Warn("Invalid cookie")
-				http.Error(w, "Not authorized", 401)
+				http.SetCookie(w, ClearCookie(r))
+				s.authRedirect(logger, w, r, p)
 			}
 			return
 		}
