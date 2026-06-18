@@ -4,6 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -12,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thomseddon/traefik-forward-auth/internal/provider"
+	"github.com/priyankub/traefik-forward-auth/internal/provider"
 )
 
 // Request Validation
@@ -100,7 +101,7 @@ func ValidateEmail(email, ruleName string) bool {
 // ValidateWhitelist checks if the email is in whitelist
 func ValidateWhitelist(email string, whitelist CommaSeparatedList) bool {
 	for _, whitelist := range whitelist {
-		if email == whitelist {
+		if strings.EqualFold(email, whitelist) {
 			return true
 		}
 	}
@@ -114,7 +115,7 @@ func ValidateDomains(email string, domains CommaSeparatedList) bool {
 		return false
 	}
 	for _, domain := range domains {
-		if domain == parts[1] {
+		if strings.EqualFold(domain, parts[1]) {
 			return true
 		}
 	}
@@ -174,6 +175,7 @@ func MakeCookie(r *http.Request, email string) *http.Cookie {
 		Domain:   cookieDomain(r),
 		HttpOnly: true,
 		Secure:   !config.InsecureCookie,
+		SameSite: http.SameSiteLaxMode,
 		Expires:  expires,
 	}
 }
@@ -187,6 +189,7 @@ func ClearCookie(r *http.Request) *http.Cookie {
 		Domain:   cookieDomain(r),
 		HttpOnly: true,
 		Secure:   !config.InsecureCookie,
+		SameSite: http.SameSiteLaxMode,
 		Expires:  time.Now().Local().Add(time.Hour * -1),
 	}
 }
@@ -208,6 +211,7 @@ func MakeCSRFCookie(r *http.Request, nonce string) *http.Cookie {
 		Domain:   csrfCookieDomain(r),
 		HttpOnly: true,
 		Secure:   !config.InsecureCookie,
+		SameSite: http.SameSiteLaxMode,
 		Expires:  time.Now().Local().Add(time.Hour * 1),
 	}
 }
@@ -221,6 +225,7 @@ func ClearCSRFCookie(r *http.Request, c *http.Cookie) *http.Cookie {
 		Domain:   csrfCookieDomain(r),
 		HttpOnly: true,
 		Secure:   !config.InsecureCookie,
+		SameSite: http.SameSiteLaxMode,
 		Expires:  time.Now().Local().Add(time.Hour * -1),
 	}
 }
@@ -238,7 +243,7 @@ func ValidateCSRFCookie(c *http.Cookie, state string) (valid bool, provider stri
 	}
 
 	// Check nonce match
-	if c.Value != state[:32] {
+	if subtle.ConstantTimeCompare([]byte(c.Value), []byte(state[:32])) != 1 {
 		return false, "", "", errors.New("CSRF cookie does not match state")
 	}
 
@@ -316,7 +321,9 @@ func matchCookieDomains(domain string) (bool, string) {
 func cookieSignature(r *http.Request, email, expires string) string {
 	hash := hmac.New(sha256.New, config.Secret)
 	hash.Write([]byte(cookieDomain(r)))
+	hash.Write([]byte("|"))
 	hash.Write([]byte(email))
+	hash.Write([]byte("|"))
 	hash.Write([]byte(expires))
 	return base64.URLEncoding.EncodeToString(hash.Sum(nil))
 }

@@ -3,9 +3,10 @@ package tfa
 import (
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/sirupsen/logrus"
-	"github.com/thomseddon/traefik-forward-auth/internal/provider"
+	"github.com/priyankub/traefik-forward-auth/internal/provider"
 	muxhttp "github.com/traefik/traefik/v2/pkg/muxer/http"
 )
 
@@ -44,6 +45,9 @@ func (s *Server) buildRoutes() {
 	// Add logout handler
 	s.muxer.Handle(config.Path+"/logout", s.LogoutHandler())
 
+	// Add healthcheck handler
+	s.muxer.Handle("/ping", s.HealthcheckHandler())
+
 	// Add a default handler
 	if config.DefaultAction == "allow" {
 		s.muxer.NewRoute().Handler(s.AllowHandler("default"))
@@ -62,6 +66,11 @@ func (s *Server) RootHandler(w http.ResponseWriter, r *http.Request) {
 	// Read URI from header if we're acting as forward auth middleware
 	if _, ok := r.Header["X-Forwarded-Uri"]; ok {
 		r.URL, _ = url.Parse(r.Header.Get("X-Forwarded-Uri"))
+	}
+
+	// Enforce leading slash to prevent route/rule bypasses (Issue #424)
+	if r.URL != nil && r.URL.Path != "" && !strings.HasPrefix(r.URL.Path, "/") {
+		r.URL.Path = "/" + r.URL.Path
 	}
 
 	// Pass to mux
@@ -215,6 +224,14 @@ func (s *Server) LogoutHandler() http.HandlerFunc {
 	}
 }
 
+// HealthcheckHandler handles healthcheck requests
+func (s *Server) HealthcheckHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+		w.Write([]byte("OK"))
+	}
+}
+
 func (s *Server) authRedirect(logger *logrus.Entry, w http.ResponseWriter, r *http.Request, p provider.Provider) {
 	// Error indicates no cookie, generate nonce
 	err, nonce := Nonce()
@@ -257,8 +274,12 @@ func (s *Server) logger(r *http.Request, handler, rule, msg string) *logrus.Entr
 	})
 
 	// Log request
+	var cookieNames []string
+	for _, c := range r.Cookies() {
+		cookieNames = append(cookieNames, c.Name)
+	}
 	logger.WithFields(logrus.Fields{
-		"cookies": r.Cookies(),
+		"cookies": cookieNames,
 	}).Debug(msg)
 
 	return logger

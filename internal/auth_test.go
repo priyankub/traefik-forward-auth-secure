@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/thomseddon/traefik-forward-auth/internal/provider"
+	"github.com/priyankub/traefik-forward-auth/internal/provider"
 )
 
 /**
@@ -269,6 +269,7 @@ func TestAuthMakeCookie(t *testing.T) {
 	assert.Equal("/", c.Path)
 	assert.Equal("app.example.com", c.Domain)
 	assert.True(c.Secure)
+	assert.Equal(http.SameSiteLaxMode, c.SameSite)
 
 	expires := time.Now().Local().Add(config.Lifetime)
 	assert.WithinDuration(expires, c.Expires, 10*time.Second)
@@ -303,6 +304,7 @@ func TestAuthMakeCSRFCookie(t *testing.T) {
 	c = MakeCSRFCookie(r, "12333378901234567890123456789012")
 	assert.Equal("_forward_auth_csrf_123333", c.Name)
 	assert.Equal("example.com", c.Domain)
+	assert.Equal(http.SameSiteLaxMode, c.SameSite)
 }
 
 func TestAuthClearCSRFCookie(t *testing.T) {
@@ -451,4 +453,74 @@ func TestAuthCookieDomains(t *testing.T) {
 	marshal, err := cds.MarshalFlag()
 	assert.Nil(err)
 	assert.Equal("one.com,two.org", marshal)
+}
+
+func TestAuthHMACCollisions(t *testing.T) {
+	assert := assert.New(t)
+	config, _ = NewConfig([]string{"--secret=testsecret"})
+
+	r, _ := http.NewRequest("GET", "http://app.example.com", nil)
+	r.Header.Add("X-Forwarded-Host", "app.example.com")
+
+	// Verify that varying strings do not collide when generating signatures
+	sig1 := cookieSignature(r, "foo@bar.com", "123")
+	sig2 := cookieSignature(r, "foo@bar.com1", "23")
+	sig3 := cookieSignature(r, "foo@bar.co", "m123")
+
+	assert.NotEqual(sig1, sig2)
+	assert.NotEqual(sig1, sig3)
+	assert.NotEqual(sig2, sig3)
+}
+
+func TestAuthCSRFConstantTime(t *testing.T) {
+	assert := assert.New(t)
+	config, _ = NewConfig([]string{})
+
+	validNonce := "12345678901234567890123456789012"
+	c := &http.Cookie{Value: validNonce}
+
+	validState := validNonce + ":google:http://example.com"
+	valid, _, _, err := ValidateCSRFCookie(c, validState)
+	assert.True(valid)
+	assert.Nil(err)
+
+	invalidState := "99945678901234567890123456789012:google:http://example.com"
+	valid, _, _, err = ValidateCSRFCookie(c, invalidState)
+	assert.False(valid)
+	assert.NotNil(err)
+}
+
+func TestRootHandlerLeadingSlash(t *testing.T) {
+	assert := assert.New(t)
+	config, _ = NewConfig([]string{"--default-action=allow"})
+	s := NewServer()
+
+	w := httptest.NewRecorder()
+
+	// Malformed path missing a leading slash (e.g., gRPC vulnerability Issue 424)
+	r := httptest.NewRequest("GET", "http://app.example.com", nil)
+	r.Header.Add("X-Forwarded-Method", "GET")
+	r.Header.Add("X-Forwarded-Host", "app.example.com")
+	r.Header.Add("X-Forwarded-Uri", "api/protected")
+
+	s.RootHandler(w, r)
+
+	// Ensure the internal request URL path was normalized with a leading slash
+	assert.True(strings.HasPrefix(r.URL.Path, "/"))
+	assert.Equal("/api/protected", r.URL.Path)
+}
+
+func TestAuthCaseInsensitiveValidation(t *testing.T) {
+	assert := assert.New(t)
+
+	whitelist := CommaSeparatedList{"user@domain.com"}
+	domains := CommaSeparatedList{"domain.com"}
+
+	assert.True(ValidateWhitelist("USER@DOMAIN.COM", whitelist))
+	assert.True(ValidateWhitelist("user@domain.com", whitelist))
+	assert.True(ValidateWhitelist("uSeR@dOmAiN.cOm", whitelist))
+
+	assert.True(ValidateDomains("test@DOMAIN.COM", domains))
+	assert.True(ValidateDomains("test@domain.com", domains))
+	assert.True(ValidateDomains("test@dOmAiN.cOm", domains))
 }
