@@ -127,7 +127,13 @@ func NewConfig(args []string) (*Config, error) {
 	if len(c.Path) > 0 && c.Path[0] != '/' {
 		c.Path = "/" + c.Path
 	}
+	if len(c.SecretString) >= 2 && c.SecretString[0] == '"' && c.SecretString[len(c.SecretString)-1] == '"' {
+		c.SecretString = c.SecretString[1 : len(c.SecretString)-1]
+	}
 	c.Secret = []byte(c.SecretString)
+	if log != nil {
+		log.Debugf("Evaluated Secret Length: %d bytes", len(c.Secret))
+	}
 	c.Lifetime = time.Second * time.Duration(c.LifetimeString)
 
 	return c, nil

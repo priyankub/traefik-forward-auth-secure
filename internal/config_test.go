@@ -304,6 +304,13 @@ func TestConfigTransformation(t *testing.T) {
 
 	assert.Equal(200, c.LifetimeString)
 	assert.Equal(time.Second*time.Duration(200), c.Lifetime, "lifetime should be read and converted to duration")
+
+	c, err = NewConfig([]string{
+		"--secret=\"quotedsecret\"",
+	})
+	require.Nil(t, err)
+	assert.Equal("quotedsecret", c.SecretString, "secret quotes should be stripped")
+	assert.Equal([]byte("quotedsecret"), c.Secret, "secret quotes should be stripped in byte array")
 }
 
 func TestConfigValidate(t *testing.T) {
