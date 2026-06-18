@@ -4,15 +4,15 @@ ARG TARGETOS
 ARG TARGETARCH
 
 # Setup
-RUN mkdir -p /go/src/github.com/priyankub/traefik-forward-auth
-WORKDIR /go/src/github.com/priyankub/traefik-forward-auth
+RUN mkdir -p /go/src/github.com/priyankub/traefik-forward-auth-secure
+WORKDIR /go/src/github.com/priyankub/traefik-forward-auth-secure
 
 # Add libraries
 RUN apk add --no-cache git
 
 # Copy & build
-ADD . /go/src/github.com/priyankub/traefik-forward-auth/
-RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH GO111MODULE=on go build -a -installsuffix nocgo -o /traefik-forward-auth github.com/priyankub/traefik-forward-auth/cmd
+ADD . /go/src/github.com/priyankub/traefik-forward-auth-secure/
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH GO111MODULE=on go build -a -installsuffix nocgo -o /traefik-forward-auth github.com/priyankub/traefik-forward-auth-secure/cmd
 
 # Copy into scratch container
 FROM scratch

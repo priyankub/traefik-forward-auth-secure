@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
-	internal "github.com/priyankub/traefik-forward-auth/internal"
+	internal "github.com/priyankub/traefik-forward-auth-secure/internal"
 )
 
 // Main
