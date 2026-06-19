@@ -541,15 +541,18 @@ func TestClearCookies(t *testing.T) {
 
 	r := httptest.NewRequest("GET", "http://sub.example.com/", nil)
 
-	cDomain := ClearCookie(r)
-	assert.Equal("_forward_auth", cDomain.Name)
-	assert.Equal("", cDomain.Value)
-	assert.Equal("example.com", cDomain.Domain)
-	assert.Less(cDomain.Expires.Unix(), time.Now().Unix())
+	cookies := ClearCookies(r)
+	assert.True(len(cookies) >= 3, "should return at least host-only, domain, and subdomain cookies")
 
-	cHost := ClearHostCookie(r)
-	assert.Equal("_forward_auth", cHost.Name)
-	assert.Equal("", cHost.Value)
-	assert.Equal("", cHost.Domain, "host cookie domain should be empty")
-	assert.Less(cHost.Expires.Unix(), time.Now().Unix())
+	domains := make(map[string]bool)
+	for _, c := range cookies {
+		assert.Equal("_forward_auth", c.Name)
+		assert.Equal("", c.Value)
+		assert.Less(c.Expires.Unix(), time.Now().Unix())
+		domains[c.Domain] = true
+	}
+
+	assert.True(domains[""], "should clear host-only cookie (empty domain)")
+	assert.True(domains["example.com"], "should clear domain cookie")
+	assert.True(domains[".example.com"], "should clear subdomain cookie with leading dot")
 }

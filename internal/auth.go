@@ -180,32 +180,45 @@ func MakeCookie(r *http.Request, email string) *http.Cookie {
 	}
 }
 
-// ClearCookie clears the auth cookie
-func ClearCookie(r *http.Request) *http.Cookie {
-	return &http.Cookie{
-		Name:     config.CookieName,
-		Value:    "",
-		Path:     "/",
-		Domain:   cookieDomain(r),
-		HttpOnly: true,
-		Secure:   !config.InsecureCookie,
-		SameSite: http.SameSiteLaxMode,
-		Expires:  time.Now().Local().Add(time.Hour * -1),
-	}
-}
+// ClearCookies returns a slice of expired cookies covering all domain permutations (.domain, domain, host-only)
+func ClearCookies(r *http.Request) []*http.Cookie {
+	var cookies []*http.Cookie
+	seen := make(map[string]bool)
 
-// ClearHostCookie clears the host-only auth cookie
-func ClearHostCookie(r *http.Request) *http.Cookie {
-	return &http.Cookie{
-		Name:     config.CookieName,
-		Value:    "",
-		Path:     "/",
-		Domain:   "",
-		HttpOnly: true,
-		Secure:   !config.InsecureCookie,
-		SameSite: http.SameSiteLaxMode,
-		Expires:  time.Now().Local().Add(time.Hour * -1),
+	add := func(domain string) {
+		if seen[domain] {
+			return
+		}
+		seen[domain] = true
+		cookies = append(cookies, &http.Cookie{
+			Name:     config.CookieName,
+			Value:    "",
+			Path:     "/",
+			Domain:   domain,
+			HttpOnly: true,
+			Secure:   !config.InsecureCookie,
+			SameSite: http.SameSiteLaxMode,
+			Expires:  time.Now().Local().Add(time.Hour * -1),
+		})
 	}
+
+	// Always clear host-only cookie (empty domain)
+	add("")
+
+	// Clear host without port
+	hostParts := strings.Split(r.Host, ":")
+	add(hostParts[0])
+
+	// Clear configured domains and subdomains
+	for _, d := range config.CookieDomains {
+		add(d.Domain)
+		add(d.SubDomain)
+	}
+
+	// Fallback to cookieDomain(r)
+	add(cookieDomain(r))
+
+	return cookies
 }
 
 func buildCSRFCookieName(nonce string) string {
