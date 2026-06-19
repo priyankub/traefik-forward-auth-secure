@@ -211,12 +211,13 @@ func (s *Server) AuthCallbackHandler() http.HandlerFunc {
 		}).Info("Successfully generated auth cookie, redirecting user.")
 
 		// Redirect
-		if err := ValidateRedirect(redirect); err != nil {
+		redirectURL, err := ValidateRedirect(redirect)
+		if err != nil {
 			logger.WithField("error", err).Warn("Invalid redirect URL")
 			http.Error(w, "Not authorized", 401)
 			return
 		}
-		http.Redirect(w, r, redirect, http.StatusTemporaryRedirect)
+		http.Redirect(w, r, redirectURL.String(), http.StatusTemporaryRedirect)
 	}
 }
 

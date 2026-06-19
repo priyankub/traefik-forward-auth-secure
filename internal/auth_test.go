@@ -566,16 +566,24 @@ func TestValidateRedirect(t *testing.T) {
 	}
 
 	// Safe relative paths
-	assert.Nil(ValidateRedirect("/dashboard"))
-	assert.Nil(ValidateRedirect("/api/v1/users"))
+	_, err := ValidateRedirect("/dashboard")
+	assert.Nil(err)
+	_, err = ValidateRedirect("/api/v1/users")
+	assert.Nil(err)
 
 	// Safe allowed domains
-	assert.Nil(ValidateRedirect("https://auth.example.com/"))
-	assert.Nil(ValidateRedirect("https://sub.example.com/login"))
+	_, err = ValidateRedirect("https://auth.example.com/")
+	assert.Nil(err)
+	_, err = ValidateRedirect("https://sub.example.com/login")
+	assert.Nil(err)
 
 	// Malicious open redirects
-	assert.NotNil(ValidateRedirect("https://evil-phishing.com/"))
-	assert.NotNil(ValidateRedirect("//evil-phishing.com/relative-protocol"))
-	assert.NotNil(ValidateRedirect("javascript:alert(1)"))
-	assert.NotNil(ValidateRedirect("https://example.com\r\nSet-Cookie:malicious=1"))
+	_, err = ValidateRedirect("https://evil-phishing.com/")
+	assert.NotNil(err)
+	_, err = ValidateRedirect("//evil-phishing.com/relative-protocol")
+	assert.NotNil(err)
+	_, err = ValidateRedirect("javascript:alert(1)")
+	assert.NotNil(err)
+	_, err = ValidateRedirect("https://example.com\r\nSet-Cookie:malicious=1")
+	assert.NotNil(err)
 }

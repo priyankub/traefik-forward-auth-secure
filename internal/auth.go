@@ -284,7 +284,7 @@ func ValidateCSRFCookie(c *http.Cookie, state string) (valid bool, provider stri
 
 	// Valid, return provider and redirect
 	redirect = params[split+1:]
-	if err := ValidateRedirect(redirect); err != nil {
+	if _, err := ValidateRedirect(redirect); err != nil {
 		return false, "", "", err
 	}
 
@@ -292,47 +292,47 @@ func ValidateCSRFCookie(c *http.Cookie, state string) (valid bool, provider stri
 }
 
 // ValidateRedirect verifies that the redirect URL is valid and targets a trusted domain or relative path.
-func ValidateRedirect(redirect string) error {
+func ValidateRedirect(redirect string) (*url.URL, error) {
 	if strings.ContainsAny(redirect, "\r\n") {
-		return errors.New("redirect URL contains invalid characters")
+		return nil, errors.New("redirect URL contains invalid characters")
 	}
 
 	u, err := url.Parse(redirect)
 	if err != nil {
-		return errors.New("invalid redirect URL format")
+		return nil, errors.New("invalid redirect URL format")
 	}
 
 	// Relative path redirects on the same host are safe
 	if u.Scheme == "" && u.Host == "" {
 		if strings.HasPrefix(u.Path, "//") {
-			return errors.New("relative redirect cannot start with //")
+			return nil, errors.New("relative redirect cannot start with //")
 		}
-		return nil
+		return u, nil
 	}
 
 	// For absolute URLs, enforce HTTP/HTTPS schemes only
 	if !strings.EqualFold(u.Scheme, "http") && !strings.EqualFold(u.Scheme, "https") {
-		return errors.New("invalid redirect scheme")
+		return nil, errors.New("invalid redirect scheme")
 	}
 
 	host := strings.Split(u.Host, ":")[0]
 	if config != nil && config.AuthHost == "" && len(config.CookieDomains) == 0 {
-		return nil
+		return u, nil
 	}
 
 	if config != nil && config.AuthHost != "" && strings.EqualFold(host, config.AuthHost) {
-		return nil
+		return u, nil
 	}
 
 	if config != nil {
 		for _, d := range config.CookieDomains {
 			if d.Match(host) {
-				return nil
+				return u, nil
 			}
 		}
 	}
 
-	return errors.New("redirect host is not in allowed domains")
+	return nil, errors.New("redirect host is not in allowed domains")
 }
 
 // MakeState generates a state value
