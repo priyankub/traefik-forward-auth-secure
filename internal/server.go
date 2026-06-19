@@ -109,6 +109,7 @@ func (s *Server) AuthHandler(providerName, rule string) http.HandlerFunc {
 			} else {
 				logger.WithField("error", err).Warn("Invalid cookie")
 				http.SetCookie(w, ClearCookie(r))
+				http.SetCookie(w, ClearHostCookie(r))
 				s.authRedirect(logger, w, r, p)
 			}
 			return
@@ -213,6 +214,7 @@ func (s *Server) LogoutHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Clear cookie
 		http.SetCookie(w, ClearCookie(r))
+		http.SetCookie(w, ClearHostCookie(r))
 
 		logger := s.logger(r, "Logout", "default", "Handling logout")
 		logger.Info("Logged out user")

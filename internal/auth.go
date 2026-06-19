@@ -194,6 +194,20 @@ func ClearCookie(r *http.Request) *http.Cookie {
 	}
 }
 
+// ClearHostCookie clears the host-only auth cookie
+func ClearHostCookie(r *http.Request) *http.Cookie {
+	return &http.Cookie{
+		Name:     config.CookieName,
+		Value:    "",
+		Path:     "/",
+		Domain:   "",
+		HttpOnly: true,
+		Secure:   !config.InsecureCookie,
+		SameSite: http.SameSiteLaxMode,
+		Expires:  time.Now().Local().Add(time.Hour * -1),
+	}
+}
+
 func buildCSRFCookieName(nonce string) string {
 	return config.CSRFCookieName + "_" + nonce[:6]
 }

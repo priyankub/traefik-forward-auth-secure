@@ -278,15 +278,21 @@ func TestServerLogout(t *testing.T) {
 	res, _ := doHttpRequest(req, nil)
 	require.Equal(401, res.StatusCode, "should return a 401")
 
-	// Check for cookie
-	var cookie *http.Cookie
+	// Check for cookies (should return both domain-scoped and host-only cookies)
+	var domainCookie, hostCookie *http.Cookie
 	for _, c := range res.Cookies() {
 		if c.Name == config.CookieName {
-			cookie = c
+			if c.Domain != "" {
+				domainCookie = c
+			} else {
+				hostCookie = c
+			}
 		}
 	}
-	require.NotNil(cookie)
-	require.Less(cookie.Expires.Local().Unix(), time.Now().Local().Unix()-50, "cookie should have expired")
+	require.NotNil(domainCookie, "domain cookie should be present")
+	require.NotNil(hostCookie, "host cookie should be present")
+	require.Less(domainCookie.Expires.Local().Unix(), time.Now().Local().Unix()-50, "domain cookie should have expired")
+	require.Less(hostCookie.Expires.Local().Unix(), time.Now().Local().Unix()-50, "host cookie should have expired")
 
 	// Test with redirect
 	config.LogoutRedirect = "http://redirect/path"
@@ -294,15 +300,21 @@ func TestServerLogout(t *testing.T) {
 	res, _ = doHttpRequest(req, nil)
 	require.Equal(307, res.StatusCode, "should return a 307")
 
-	// Check for cookie
-	cookie = nil
+	// Check for cookies
+	domainCookie, hostCookie = nil, nil
 	for _, c := range res.Cookies() {
 		if c.Name == config.CookieName {
-			cookie = c
+			if c.Domain != "" {
+				domainCookie = c
+			} else {
+				hostCookie = c
+			}
 		}
 	}
-	require.NotNil(cookie)
-	require.Less(cookie.Expires.Local().Unix(), time.Now().Local().Unix()-50, "cookie should have expired")
+	require.NotNil(domainCookie, "domain cookie should be present")
+	require.NotNil(hostCookie, "host cookie should be present")
+	require.Less(domainCookie.Expires.Local().Unix(), time.Now().Local().Unix()-50, "domain cookie should have expired")
+	require.Less(hostCookie.Expires.Local().Unix(), time.Now().Local().Unix()-50, "host cookie should have expired")
 
 	fwd, _ := res.Location()
 	require.NotNil(fwd)

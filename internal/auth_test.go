@@ -531,3 +531,25 @@ func TestAuthCaseInsensitiveValidation(t *testing.T) {
 	assert.True(ValidateDomains("test@domain.com", domains))
 	assert.True(ValidateDomains("test@dOmAiN.cOm", domains))
 }
+
+func TestClearCookies(t *testing.T) {
+	assert := assert.New(t)
+	config = newDefaultConfig()
+	config.CookieDomains = []CookieDomain{
+		{Domain: "example.com", DomainLen: 11, SubDomain: ".example.com", SubDomainLen: 12},
+	}
+
+	r := httptest.NewRequest("GET", "http://sub.example.com/", nil)
+
+	cDomain := ClearCookie(r)
+	assert.Equal("_forward_auth", cDomain.Name)
+	assert.Equal("", cDomain.Value)
+	assert.Equal("example.com", cDomain.Domain)
+	assert.Less(cDomain.Expires.Unix(), time.Now().Unix())
+
+	cHost := ClearHostCookie(r)
+	assert.Equal("_forward_auth", cHost.Name)
+	assert.Equal("", cHost.Value)
+	assert.Equal("", cHost.Domain, "host cookie domain should be empty")
+	assert.Less(cHost.Expires.Unix(), time.Now().Unix())
+}
