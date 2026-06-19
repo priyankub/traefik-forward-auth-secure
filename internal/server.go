@@ -64,6 +64,15 @@ func (s *Server) buildRoutes() {
 // RootHandler Overwrites the request method, host and URL with those from the
 // forwarded request so it's correctly routed by mux
 func (s *Server) RootHandler(w http.ResponseWriter, r *http.Request) {
+	log.WithFields(logrus.Fields{
+		"path":               r.URL.Path,
+		"method":             r.Method,
+		"X-Forwarded-Method": r.Header.Get("X-Forwarded-Method"),
+		"X-Forwarded-Host":   r.Header.Get("X-Forwarded-Host"),
+		"X-Forwarded-Uri":    r.Header.Get("X-Forwarded-Uri"),
+		"X-Forwarded-Proto":  r.Header.Get("X-Forwarded-Proto"),
+	}).Debug("RootHandler received request")
+
 	// Clean up X-Forwarded-* headers (in case of multiple proxies)
 	for _, header := range []string{"X-Forwarded-Method", "X-Forwarded-Host", "X-Forwarded-Uri", "X-Forwarded-Proto"} {
 		if val := r.Header.Get(header); val != "" {
@@ -104,6 +113,11 @@ func (s *Server) AuthHandler(providerName, rule string) http.HandlerFunc {
 	p, _ := config.GetConfiguredProvider(providerName)
 
 	return func(w http.ResponseWriter, r *http.Request) {
+		log.WithFields(logrus.Fields{
+			"path": r.URL.Path,
+			"uri":  r.RequestURI,
+		}).Debug("Executing AuthHandler")
+
 		// Logging setup
 		logger := s.logger(r, "Auth", rule, "Authenticating request")
 
@@ -253,13 +267,24 @@ func isValidRedirect(u string) bool {
 // LogoutHandler logs a user out
 func (s *Server) LogoutHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		logger := s.logger(r, "Logout", "default", "Handling logout")
+
 		// Clear cookie
-		for _, c := range ClearCookies(r) {
+		cookies := ClearCookies(r)
+		for _, c := range cookies {
+			logger.WithFields(logrus.Fields{
+				"cookie_name":   c.Name,
+				"cookie_domain": c.Domain,
+				"cookie_path":   c.Path,
+			}).Debug("Clearing cookie")
 			http.SetCookie(w, c)
 		}
 
-		logger := s.logger(r, "Logout", "default", "Handling logout")
-		logger.Info("Logged out user")
+		logger.WithFields(logrus.Fields{
+			"r.Host":           r.Host,
+			"X-Forwarded-Host": r.Header.Get("X-Forwarded-Host"),
+			"num_cookies":      len(cookies),
+		}).Info("Logged out user")
 
 		if config.LogoutRedirect != "" {
 			reqHost := r.Header.Get("X-Forwarded-Host")

@@ -60,6 +60,20 @@ func TestServerRootHandler(t *testing.T) {
 	assert.Equal("example.com", req.Host, "x-forwarded-host should be read into request")
 	assert.Equal("/should-not", req.URL.Path, "request url should be preserved if x-forwarded-uri not present")
 	assert.Equal("/should-not?ignore=me", req.URL.RequestURI(), "request url should be preserved if x-forwarded-uri not present")
+
+	// Comma-separated X-Forwarded headers should be handled correctly
+	req = httptest.NewRequest("POST", "http://should-use-x-forwarded.com/should?ignore=me", nil)
+	req.Header.Add("X-Forwarded-Method", "GET, GET")
+	req.Header.Add("X-Forwarded-Proto", "https, http")
+	req.Header.Add("X-Forwarded-Host", "example.com, example.com")
+	req.Header.Add("X-Forwarded-Uri", "/foo?q=bar, /foo?q=bar")
+	NewServer().RootHandler(httptest.NewRecorder(), req)
+
+	assert.Equal("GET", req.Method, "x-forwarded-method should be stripped of comma-separated values")
+	assert.Equal("example.com", req.Host, "x-forwarded-host should be stripped of comma-separated values")
+	assert.Equal("/foo", req.URL.Path, "x-forwarded-uri should be stripped of comma-separated values")
+	assert.Equal("/foo?q=bar", req.URL.RequestURI(), "x-forwarded-uri should be stripped of comma-separated values")
+	assert.Equal("https", req.Header.Get("X-Forwarded-Proto"), "x-forwarded-proto should be stripped of comma-separated values")
 }
 
 func TestServerAuthHandlerInvalid(t *testing.T) {
