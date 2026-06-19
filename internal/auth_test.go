@@ -556,3 +556,26 @@ func TestClearCookies(t *testing.T) {
 	assert.True(domains["example.com"], "should clear domain cookie")
 	assert.True(domains[".example.com"], "should clear subdomain cookie with leading dot")
 }
+
+func TestValidateRedirect(t *testing.T) {
+	assert := assert.New(t)
+	config = newDefaultConfig()
+	config.AuthHost = "auth.example.com"
+	config.CookieDomains = []CookieDomain{
+		{Domain: "example.com", DomainLen: 11, SubDomain: ".example.com", SubDomainLen: 12},
+	}
+
+	// Safe relative paths
+	assert.Nil(ValidateRedirect("/dashboard"))
+	assert.Nil(ValidateRedirect("/api/v1/users"))
+
+	// Safe allowed domains
+	assert.Nil(ValidateRedirect("https://auth.example.com/"))
+	assert.Nil(ValidateRedirect("https://sub.example.com/login"))
+
+	// Malicious open redirects
+	assert.NotNil(ValidateRedirect("https://evil-phishing.com/"))
+	assert.NotNil(ValidateRedirect("//evil-phishing.com/relative-protocol"))
+	assert.NotNil(ValidateRedirect("javascript:alert(1)"))
+	assert.NotNil(ValidateRedirect("https://example.com\r\nSet-Cookie:malicious=1"))
+}
