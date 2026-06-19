@@ -1,6 +1,6 @@
 module github.com/priyankub/traefik-forward-auth-secure
 
-go 1.25
+go 1.25.0
 
 toolchain go1.26.4
 
@@ -11,7 +11,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/thomseddon/go-flags v1.4.1-0.20190507184247-a3629c504486
 	github.com/traefik/traefik/v2 v2.11.34
-	golang.org/x/oauth2 v0.34.0
+	golang.org/x/oauth2 v0.36.0
 )
 
 require (
