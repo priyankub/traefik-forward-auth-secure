@@ -1,8 +1,17 @@
 
-# Traefik Forward Auth ![Build Status](https://img.shields.io/github/workflow/status/priyankub/traefik-forward-auth/CI) [![Go Report Card](https://goreportcard.com/badge/github.com/priyankub/traefik-forward-auth-secure)](https://goreportcard.com/report/github.com/priyankub/traefik-forward-auth-secure) ![Docker Pulls](https://img.shields.io/docker/pulls/priyankub/traefik-forward-auth.svg) [![GitHub release](https://img.shields.io/github/release/priyankub/traefik-forward-auth.svg)](https://GitHub.com/priyankub/traefik-forward-auth/releases/)
+# Traefik Forward Auth ![Build Status](https://img.shields.io/github/workflow/status/priyankub/traefik-forward-auth-secure/CI) [![Go Report Card](https://goreportcard.com/badge/github.com/priyankub/traefik-forward-auth-secure)](https://goreportcard.com/report/github.com/priyankub/traefik-forward-auth-secure) [![GitHub release](https://img.shields.io/github/release/priyankub/traefik-forward-auth-secure.svg)](https://GitHub.com/priyankub/traefik-forward-auth-secure/releases/)
 
 
 A minimal forward authentication service that provides OAuth/SSO login and authentication for the [traefik](https://github.com/containous/traefik) reverse proxy/load balancer.
+
+## Enhancements in this Fork
+
+This is a security and modernization-focused fork of [thomseddon/traefik-forward-auth](https://github.com/thomseddon/traefik-forward-auth). 
+It introduces several crucial improvements:
+
+- **Security Hardened**: Patched Open Redirect vulnerabilities, integrated fortress-grade URL validation, and resolved CodeQL taint tracking warnings.
+- **Robust Logout & Session Management**: Fixed multi-proxy `X-Forwarded-*` header parsing bugs and implemented comprehensive cookie clearance across all domain and subdomain permutations to ensure a complete and reliable logout.
+- **Modernized Stack**: Migrated the HTTP routing engine to support the Traefik v3 API, upgraded to Go 1.26+, and bumped all core dependencies to their latest secure versions (including `logrus`, `go-jose`, and `go-oidc`).
 
 ## Why?
 
@@ -41,13 +50,15 @@ A minimal forward authentication service that provides OAuth/SSO login and authe
 
 ## Releases
 
-We recommend using the `2` tag on docker hub (`priyankub/traefik-forward-auth:2`).
+You can download the latest pre-compiled binaries for AMD64 and ARM directly from [GitHub Releases](https://github.com/priyankub/traefik-forward-auth-secure/releases).
 
-You can also use the latest incremental releases found on [docker hub](https://hub.docker.com/r/priyankub/traefik-forward-auth/tags) and [github](https://github.com/priyankub/traefik-forward-auth-secure/releases).
+If you wish to use Docker, this fork is intended to be built from source. You can build the container image locally:
 
-ARM releases are also available on docker hub, just append `-arm` or `-arm64` to your desired released (e.g. `2-arm` or `2.1-arm64`).
-
-We also build binary files for usage without docker starting with releases after 2.2.0 You can find these as assets of the specific GitHub release.
+```bash
+git clone https://github.com/priyankub/traefik-forward-auth-secure.git
+cd traefik-forward-auth-secure
+docker build -t traefik-forward-auth-secure .
+```
 
 #### Upgrade Guide
 
@@ -74,7 +85,8 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
 
   traefik-forward-auth:
-    image: priyankub/traefik-forward-auth:2
+    build: ./traefik-forward-auth-secure # Or your local clone path
+    image: traefik-forward-auth-secure
     environment:
       - PROVIDERS_GOOGLE_CLIENT_ID=your-client-id
       - PROVIDERS_GOOGLE_CLIENT_SECRET=your-client-secret

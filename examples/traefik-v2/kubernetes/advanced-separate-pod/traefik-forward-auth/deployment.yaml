@@ -22,7 +22,7 @@ spec:
       serviceAccountName: traefik-ingress-controller
       terminationGracePeriodSeconds: 60
       containers:
-      - image: priyankub/traefik-forward-auth:2
+      - image: traefik-forward-auth-secure:2
         name: traefik-forward-auth
         ports:
         - containerPort: 4181

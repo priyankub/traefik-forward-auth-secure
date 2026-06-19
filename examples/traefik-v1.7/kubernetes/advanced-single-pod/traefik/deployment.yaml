@@ -42,7 +42,7 @@ spec:
         - mountPath: /acme
           name: acme
 
-      - image: priyankub/traefik-forward-auth:2
+      - image: traefik-forward-auth-secure:2
         name: traefik-forward-auth
         ports:
         - containerPort: 4181
