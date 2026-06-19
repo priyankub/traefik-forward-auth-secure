@@ -64,6 +64,15 @@ func (s *Server) buildRoutes() {
 // RootHandler Overwrites the request method, host and URL with those from the
 // forwarded request so it's correctly routed by mux
 func (s *Server) RootHandler(w http.ResponseWriter, r *http.Request) {
+	// Clean up X-Forwarded-* headers (in case of multiple proxies)
+	for _, header := range []string{"X-Forwarded-Method", "X-Forwarded-Host", "X-Forwarded-Uri", "X-Forwarded-Proto"} {
+		if val := r.Header.Get(header); val != "" {
+			if commaIdx := strings.Index(val, ","); commaIdx != -1 {
+				r.Header.Set(header, strings.TrimSpace(val[:commaIdx]))
+			}
+		}
+	}
+
 	// Modify request
 	r.Method = r.Header.Get("X-Forwarded-Method")
 	r.Host = r.Header.Get("X-Forwarded-Host")
