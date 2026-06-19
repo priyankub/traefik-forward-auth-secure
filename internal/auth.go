@@ -265,7 +265,7 @@ func FindCSRFCookie(r *http.Request, state string) (c *http.Cookie, err error) {
 }
 
 // ValidateCSRFCookie validates the csrf cookie against state
-func ValidateCSRFCookie(c *http.Cookie, state string) (valid bool, provider string, redirect string, err error) {
+func ValidateCSRFCookie(c *http.Cookie, state string, requestHosts ...string) (valid bool, provider string, redirect string, err error) {
 	if len(c.Value) != 32 {
 		return false, "", "", errors.New("Invalid CSRF cookie value")
 	}
@@ -284,7 +284,7 @@ func ValidateCSRFCookie(c *http.Cookie, state string) (valid bool, provider stri
 
 	// Valid, return provider and redirect
 	redirect = params[split+1:]
-	if _, err := ValidateRedirect(redirect); err != nil {
+	if _, err := ValidateRedirect(redirect, requestHosts...); err != nil {
 		return false, "", "", err
 	}
 
@@ -292,7 +292,7 @@ func ValidateCSRFCookie(c *http.Cookie, state string) (valid bool, provider stri
 }
 
 // ValidateRedirect verifies that the redirect URL is valid and targets a trusted domain or relative path.
-func ValidateRedirect(redirect string) (*url.URL, error) {
+func ValidateRedirect(redirect string, requestHosts ...string) (*url.URL, error) {
 	if strings.ContainsAny(redirect, "\r\n") {
 		return nil, errors.New("redirect URL contains invalid characters")
 	}
@@ -304,8 +304,8 @@ func ValidateRedirect(redirect string) (*url.URL, error) {
 
 	// Relative path redirects on the same host are safe
 	if u.Scheme == "" && u.Host == "" {
-		if strings.HasPrefix(u.Path, "//") {
-			return nil, errors.New("relative redirect cannot start with //")
+		if strings.HasPrefix(u.Path, "//") || strings.HasPrefix(u.Path, "/\\") || strings.HasPrefix(redirect, "\\") {
+			return nil, errors.New("relative redirect cannot start with // or /\\ or \\")
 		}
 		return u, nil
 	}
@@ -317,6 +317,15 @@ func ValidateRedirect(redirect string) (*url.URL, error) {
 
 	host := strings.Split(u.Host, ":")[0]
 	if config != nil && config.AuthHost == "" && len(config.CookieDomains) == 0 {
+		if len(requestHosts) > 0 {
+			for _, h := range requestHosts {
+				hHost := strings.Split(h, ":")[0]
+				if hHost != "" && strings.EqualFold(host, hHost) {
+					return u, nil
+				}
+			}
+			return nil, errors.New("redirect host does not match request host")
+		}
 		return u, nil
 	}
 
