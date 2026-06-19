@@ -1,13 +1,14 @@
 package tfa
 
 import (
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
 
 	"github.com/priyankub/traefik-forward-auth-secure/internal/provider"
 	"github.com/sirupsen/logrus"
-	muxhttp "github.com/traefik/traefik/v2/pkg/muxer/http"
+	muxhttp "github.com/traefik/traefik/v3/pkg/muxer/http"
 )
 
 // Server contains muxer and handler methods
@@ -23,36 +24,40 @@ func NewServer() *Server {
 }
 
 func (s *Server) buildRoutes() {
-	var err error
-	s.muxer, err = muxhttp.NewMuxer()
+	parser, err := muxhttp.NewSyntaxParser()
 	if err != nil {
 		log.Fatal(err)
 	}
+	s.muxer = muxhttp.NewMuxer(parser, nil)
 
 	// Let's build a muxer
 	for name, rule := range config.Rules {
 		matchRule := rule.formattedRule()
+		priority := muxhttp.GetRulePriority(matchRule)
 		if rule.Action == "allow" {
-			_ = s.muxer.AddRoute(matchRule, 1, s.AllowHandler(name))
+			_ = s.muxer.AddRoute(matchRule, "v2", priority, "", s.AllowHandler(name))
 		} else {
-			_ = s.muxer.AddRoute(matchRule, 1, s.AuthHandler(rule.Provider, name))
+			_ = s.muxer.AddRoute(matchRule, "v2", priority, "", s.AuthHandler(rule.Provider, name))
 		}
 	}
 
 	// Add callback handler
-	s.muxer.Handle(config.Path, s.AuthCallbackHandler())
+	cbRule := fmt.Sprintf("Path(`%s`)", config.Path)
+	_ = s.muxer.AddRoute(cbRule, "v2", muxhttp.GetRulePriority(cbRule), "", s.AuthCallbackHandler())
 
 	// Add logout handler
-	s.muxer.Handle(config.Path+"/logout", s.LogoutHandler())
+	logoutRule := fmt.Sprintf("Path(`%s/logout`)", config.Path)
+	_ = s.muxer.AddRoute(logoutRule, "v2", muxhttp.GetRulePriority(logoutRule), "", s.LogoutHandler())
 
 	// Add healthcheck handler
-	s.muxer.Handle("/ping", s.HealthcheckHandler())
+	pingRule := "Path(`/ping`)"
+	_ = s.muxer.AddRoute(pingRule, "v2", muxhttp.GetRulePriority(pingRule), "", s.HealthcheckHandler())
 
 	// Add a default handler
 	if config.DefaultAction == "allow" {
-		s.muxer.NewRoute().Handler(s.AllowHandler("default"))
+		s.muxer.SetDefaultHandler(s.AllowHandler("default"))
 	} else {
-		s.muxer.NewRoute().Handler(s.AuthHandler(config.DefaultProvider, "default"))
+		s.muxer.SetDefaultHandler(s.AuthHandler(config.DefaultProvider, "default"))
 	}
 }
 
