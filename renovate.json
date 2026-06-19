@@ -3,6 +3,7 @@
   "extends": ["config:base"],
   "enabledManagers": ["gomod", "github-actions"],
   "forkProcessing": "enabled",
+  "dependencyDashboard": true,
   "packageRules": [
     {
       "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
