@@ -1,5 +1,5 @@
 
-# Traefik Forward Auth ![Build Status](https://img.shields.io/github/workflow/status/priyankub/traefik-forward-auth-secure/CI) [![Go Report Card](https://goreportcard.com/badge/github.com/priyankub/traefik-forward-auth-secure)](https://goreportcard.com/report/github.com/priyankub/traefik-forward-auth-secure) [![GitHub release](https://img.shields.io/github/release/priyankub/traefik-forward-auth-secure.svg)](https://GitHub.com/priyankub/traefik-forward-auth-secure/releases/)
+# Traefik Forward Auth ![Build Status](https://img.shields.io/github/actions/workflow/status/priyankub/traefik-forward-auth-secure/ci.yml?branch=master) ![CodeQL Status](https://img.shields.io/github/actions/workflow/status/priyankub/traefik-forward-auth-secure/codeql-analysis.yml?branch=master) [![Go Report Card](https://goreportcard.com/badge/github.com/priyankub/traefik-forward-auth-secure)](https://goreportcard.com/report/github.com/priyankub/traefik-forward-auth-secure) [![GitHub release](https://img.shields.io/github/release/priyankub/traefik-forward-auth-secure.svg)](https://GitHub.com/priyankub/traefik-forward-auth-secure/releases/)
 
 
 A minimal forward authentication service that provides OAuth/SSO login and authentication for the [traefik](https://github.com/containous/traefik) reverse proxy/load balancer.
