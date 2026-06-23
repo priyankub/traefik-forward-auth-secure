@@ -4,10 +4,18 @@
   "enabledManagers": ["gomod", "github-actions"],
   "forkProcessing": "enabled",
   "dependencyDashboard": true,
+  "prHourlyLimit": 0,
+  "prConcurrentLimit": 0,
   "packageRules": [
     {
       "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
       "automerge": true
+    },
+    {
+      "matchPackageNames": ["*"],
+      "groupName": "All Homelab Dependencies",
+      "groupSlug": "all-homelab-deps",
+      "description": "Squash all incoming updates into a single branch to eliminate separate commit noise."
     }
   ]
 }
