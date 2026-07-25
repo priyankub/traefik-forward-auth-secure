@@ -141,6 +141,8 @@ github.com/traefik/traefik/v3 v3.7.6 h1:gV5jILPOCVkuNjXy5+d1HzMG8mpLnDDW82yYdcaV
 github.com/traefik/traefik/v3 v3.7.6/go.mod h1:M17MCB4SA7/byWTv6BrCyLDcY48lGEUwQlOdWgBFPZc=
 github.com/traefik/traefik/v3 v3.7.8 h1:fgLRGI4WQFjvSaxoscyV4pjBu+rBdtc24NWgyTy4na0=
 github.com/traefik/traefik/v3 v3.7.8/go.mod h1:I+qdMIbkGfk/NIIiOzsctn52SDoWX4Onuxy2yOFOCvE=
+github.com/traefik/traefik/v3 v3.7.9 h1:RxOqG3Wtvl1F5yCDr2ZxAg21YU3QCh/m0tae3Su4BZ8=
+github.com/traefik/traefik/v3 v3.7.9/go.mod h1:faZhl8cexCYihEeBMzfmHNtBxEHBHFFDwim6D7C2Ai8=
 github.com/unrolled/render v1.0.2 h1:dGS3EmChQP3yOi1YeFNO/Dx+MbWZhdvhQJTXochM5bs=
 github.com/unrolled/render v1.0.2/go.mod h1:gN9T0NhL4Bfbwu8ann7Ry/TGHYfosul+J0obPf6NBdM=
 github.com/vulcand/predicate v1.3.0 h1:jtNe4PHbLJ649dR7Gl+MSAzUhLGtLspAkWlSjoOiXg8=
