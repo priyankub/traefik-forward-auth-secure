@@ -10,7 +10,7 @@ require (
 	github.com/sirupsen/logrus v1.10.2
 	github.com/stretchr/testify v1.12.1
 	github.com/thomseddon/go-flags v1.4.1-0.20190507184247-a3629c504486
-	github.com/traefik/traefik/v3 v3.7.11
+	github.com/traefik/traefik/v3 v3.7.12
 	golang.org/x/oauth2 v0.36.0
 )
 
