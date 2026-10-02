@@ -360,7 +360,7 @@ func (s *Server) logger(r *http.Request, handler, rule, msg string) *logrus.Entr
 		"proto":     r.Header.Get("X-Forwarded-Proto"),
 		"host":      r.Header.Get("X-Forwarded-Host"),
 		"uri":       r.Header.Get("X-Forwarded-Uri"),
-		"source_ip": r.Header.Get("X-Forwarded-For"),
+		"source_ip": r.Header.Get("X-Real-Ip"),
 	})
 
 	// Log request

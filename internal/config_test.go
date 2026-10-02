@@ -362,6 +362,33 @@ func TestConfigValidate(t *testing.T) {
 	assert.Equal(logrus.FatalLevel, logs[0].Level)
 }
 
+func TestRuleValidateClientForwardedHeader(t *testing.T) {
+	assert := assert.New(t)
+	c, _ := NewConfig([]string{
+		"--providers.google.client-id=id",
+		"--providers.google.client-secret=secret",
+	})
+
+	rejected := []string{
+		"HeadersRegexp(`X-Forwarded-For`, `10\\.10\\.3\\.`)",
+		"Headers(`x-forwarded-for`, `10.0.0.1`)",
+		"HeadersRegexp( `Forwarded`, `for=10`)",
+	}
+	for _, rule := range rejected {
+		err := (&Rule{Action: "allow", Rule: rule, Provider: "google"}).Validate(c)
+		assert.EqualError(err, "allow rule matches a client-controlled header (X-Forwarded-For or Forwarded); match X-Real-Ip instead", rule)
+	}
+
+	allowed := []*Rule{
+		{Action: "allow", Provider: "google", Rule: "HeadersRegexp(`X-Real-Ip`, `^10\\.10\\.3\\.`)"},
+		{Action: "allow", Provider: "google", Rule: "Headers(`X-Forwarded-Host`, `example.com`)"},
+		{Action: "auth", Provider: "google", Rule: "HeadersRegexp(`X-Forwarded-For`, `10\\.`)"},
+	}
+	for _, r := range allowed {
+		assert.Nil(r.Validate(c), r.Rule)
+	}
+}
+
 func TestConfigGetProvider(t *testing.T) {
 	assert := assert.New(t)
 	c, _ := NewConfig([]string{})

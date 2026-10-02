@@ -247,6 +247,8 @@ func handleFlagError(err error) error {
 
 var legacyFileFormat = regexp.MustCompile(`(?m)^([a-z-]+) (.*)$`)
 
+var clientForwardedHeader = regexp.MustCompile("(?i)Headers(Regexp)?\\(\\s*`(X-Forwarded-For|Forwarded)`")
+
 func convertLegacyToIni(name string) (io.Reader, error) {
 	b, err := ioutil.ReadFile(name)
 	if err != nil {
@@ -366,6 +368,13 @@ func (r *Rule) formattedRule() string {
 func (r *Rule) Validate(c *Config) error {
 	if r.Action != "auth" && r.Action != "allow" {
 		return errors.New("invalid rule action, must be \"auth\" or \"allow\"")
+	}
+
+	// A client can write its own X-Forwarded-For / Forwarded, and a trusted
+	// proxy (e.g. a CDN) passes it on, so an allow rule matching them skips
+	// auth for anyone. Match the proxy-set X-Real-Ip instead.
+	if r.Action == "allow" && clientForwardedHeader.MatchString(r.Rule) {
+		return errors.New("allow rule matches a client-controlled header (X-Forwarded-For or Forwarded); match X-Real-Ip instead")
 	}
 
 	return c.setupProvider(r.Provider)

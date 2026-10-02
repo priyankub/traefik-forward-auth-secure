@@ -349,6 +349,8 @@ All options can be supplied in any of the following ways, in the following prece
            - ``Path(`path`, `/articles/{category}/{id:[0-9]+}`, ...)``
            - ``PathPrefix(`/products/`, `/articles/{category}/{id:[0-9]+}`)``
            - ``Query(`foo=bar`, `bar=baz`)``
+
+         An `allow` rule may not match `X-Forwarded-For` or `Forwarded` (startup fails): clients can set those headers and a trusted proxy such as a CDN passes them on. To allow by source address, match the proxy-set `X-Real-Ip`, anchored, e.g. ``HeadersRegexp(`X-Real-Ip`, `^10\.0\.0\.`)``.
        - `whitelist` - optional, same usage as whitelist`](#whitelist)
 
    For example:
