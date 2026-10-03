@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"path"
 	"strings"
 
 	"github.com/priyankub/traefik-forward-auth-secure/internal/provider"
@@ -80,7 +81,7 @@ func (s *Server) RootHandler(w http.ResponseWriter, r *http.Request) {
 	// carries X-Forwarded-Uri. Serving /ping from the forwarded URI would let
 	// any protected host be reached unauthenticated at /ping, so only treat it
 	// as a healthcheck when the request is not a forwarded one.
-	if _, forwarded := r.Header["X-Forwarded-Uri"]; !forwarded && r.URL.Path == "/ping" {
+	if _, forwarded := r.Header["X-Forwarded-Uri"]; !forwarded && r.URL != nil && r.URL.Path == "/ping" {
 		s.HealthcheckHandler()(w, r)
 		return
 	}
@@ -100,12 +101,39 @@ func (s *Server) RootHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Read URI from header if we're acting as forward auth middleware
 	if _, ok := r.Header["X-Forwarded-Uri"]; ok {
-		r.URL, _ = url.Parse(r.Header.Get("X-Forwarded-Uri"))
+		parsedURL, err := url.Parse(r.Header.Get("X-Forwarded-Uri"))
+		if err != nil || parsedURL == nil {
+			http.Error(w, "Bad request", http.StatusBadRequest)
+			return
+		}
+		r.URL = parsedURL
+	}
+
+	if r.URL == nil {
+		http.Error(w, "Bad request", http.StatusBadRequest)
+		return
+	}
+
+	// If raw URI was scheme-relative (e.g. //admin or //admin/path), url.Parse treats the
+	// first segment as the Host and leaves Path empty. Reconstruct the path properly.
+	if r.URL.Scheme == "" && r.URL.Host != "" {
+		r.URL.Path = "/" + r.URL.Host + r.URL.Path
+		r.URL.Host = ""
 	}
 
 	// Enforce leading slash to prevent route/rule bypasses (Issue #424)
-	if r.URL != nil && r.URL.Path != "" && !strings.HasPrefix(r.URL.Path, "/") {
+	if r.URL.Path != "" && !strings.HasPrefix(r.URL.Path, "/") {
 		r.URL.Path = "/" + r.URL.Path
+	}
+
+	// Normalize dot segments (e.g. /public/../admin -> /admin) to prevent path traversal rule bypasses
+	if r.URL.Path != "" {
+		hadTrailingSlash := strings.HasSuffix(r.URL.Path, "/") && len(r.URL.Path) > 1
+		cleaned := path.Clean(r.URL.Path)
+		if hadTrailingSlash && !strings.HasSuffix(cleaned, "/") {
+			cleaned += "/"
+		}
+		r.URL.Path = cleaned
 	}
 
 	// Pass to mux

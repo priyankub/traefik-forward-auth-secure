@@ -247,7 +247,7 @@ func handleFlagError(err error) error {
 
 var legacyFileFormat = regexp.MustCompile(`(?m)^([a-z-]+) (.*)$`)
 
-var clientForwardedHeader = regexp.MustCompile("(?i)Headers(Regexp)?\\(\\s*`(X-Forwarded-For|Forwarded)`")
+var clientForwardedHeader = regexp.MustCompile("(?i)Headers?(Regexp)?\\(\\s*[`\"'](X-Forwarded-For|Forwarded)[`\"']")
 
 func convertLegacyToIni(name string) (io.Reader, error) {
 	b, err := ioutil.ReadFile(name)
