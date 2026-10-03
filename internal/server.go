@@ -49,9 +49,11 @@ func (s *Server) buildRoutes() {
 	logoutRule := fmt.Sprintf("Path(`%s/logout`)", config.Path)
 	_ = s.muxer.AddRoute(logoutRule, "v2", muxhttp.GetRulePriority(logoutRule), "", s.LogoutHandler())
 
-	// Add healthcheck handler
-	pingRule := "Path(`/ping`)"
-	_ = s.muxer.AddRoute(pingRule, "v2", muxhttp.GetRulePriority(pingRule), "", s.HealthcheckHandler())
+	// Healthcheck is NOT registered as a muxer route on purpose: it is served
+	// directly in RootHandler, and only for direct probes (no X-Forwarded-Uri).
+	// If /ping were an allow route here, a forwarded request to
+	// <protected-host>/ping would match it and bypass auth, because RootHandler
+	// rewrites the request path from the client-controlled X-Forwarded-Uri.
 
 	// Add a default handler
 	if config.DefaultAction == "allow" {
@@ -72,6 +74,16 @@ func (s *Server) RootHandler(w http.ResponseWriter, r *http.Request) {
 		"X-Forwarded-Uri":    r.Header.Get("X-Forwarded-Uri"),
 		"X-Forwarded-Proto":  r.Header.Get("X-Forwarded-Proto"),
 	}).Debug("RootHandler received request")
+
+	// Healthcheck: answer ONLY direct probes. Traefik hits /ping on this
+	// service with no X-Forwarded-* headers; a forwarded auth check always
+	// carries X-Forwarded-Uri. Serving /ping from the forwarded URI would let
+	// any protected host be reached unauthenticated at /ping, so only treat it
+	// as a healthcheck when the request is not a forwarded one.
+	if _, forwarded := r.Header["X-Forwarded-Uri"]; !forwarded && r.URL.Path == "/ping" {
+		s.HealthcheckHandler()(w, r)
+		return
+	}
 
 	// Clean up X-Forwarded-* headers (in case of multiple proxies)
 	for _, header := range []string{"X-Forwarded-Method", "X-Forwarded-Host", "X-Forwarded-Uri", "X-Forwarded-Proto"} {

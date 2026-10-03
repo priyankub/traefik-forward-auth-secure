@@ -352,6 +352,27 @@ func TestServerDefaultAction(t *testing.T) {
 	assert.Equal(200, res.StatusCode, "request should be allowed with default handler")
 }
 
+func TestServerHealthcheckPingNotAuthBypass(t *testing.T) {
+	assert := assert.New(t)
+	config = newDefaultConfig()
+
+	// A forwarded request to <protected-host>/ping must require auth like any
+	// other path - it must NOT be short-circuited by the healthcheck. (The
+	// healthcheck route used to be in the muxer, which let /ping bypass auth on
+	// every protected host because RootHandler rewrites the path from the
+	// client-controlled X-Forwarded-Uri.)
+	req := newDefaultHttpRequest("/ping")
+	res, _ := doHttpRequest(req, nil)
+	assert.Equal(307, res.StatusCode, "forwarded /ping must require auth, not hit the healthcheck")
+
+	// A direct probe (no X-Forwarded-* headers, e.g. the container healthcheck)
+	// must still return 200 OK.
+	direct := httptest.NewRequest("GET", "http://localhost/ping", nil)
+	rec := httptest.NewRecorder()
+	NewServer().RootHandler(rec, direct)
+	assert.Equal(200, rec.Code, "direct /ping healthcheck must return 200")
+}
+
 func TestServerDefaultProvider(t *testing.T) {
 	assert := assert.New(t)
 	config = newDefaultConfig()
