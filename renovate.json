@@ -12,10 +12,12 @@
       "automerge": true
     },
     {
-      "matchPackagePatterns": ["*"],
       "groupName": "All Homelab Dependencies",
       "groupSlug": "all-homelab-deps",
-      "description": "Squash all incoming updates into a single branch to eliminate separate commit noise."
+      "description": "Squash all incoming updates into a single branch to eliminate separate commit noise.",
+      "matchPackageNames": [
+        "*"
+      ]
     }
   ]
 }
