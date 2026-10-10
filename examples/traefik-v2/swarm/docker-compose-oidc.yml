@@ -11,13 +11,13 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
 
   whoami:
-    image: containous/whoami
+    image: traefik/whoami
     labels:
       - "traefik.http.routers.whoami.rule=Host(`whoami.localhost.com`)"
       - "traefik.http.routers.whoami.middlewares=traefik-forward-auth"
 
   traefik-forward-auth:
-    image: traefik-forward-auth-secure:2
+    image: ghcr.io/priyankub/traefik-forward-auth-secure:latest
     environment:
       - DEFAULT_PROVIDER=oidc
       - PROVIDERS_OIDC_ISSUER_URL=https://login.microsoftonline.com/{tenant}

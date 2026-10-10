@@ -21,7 +21,7 @@ spec:
     spec:
       terminationGracePeriodSeconds: 60
       containers:
-      - image: traefik-forward-auth-secure:2
+      - image: ghcr.io/priyankub/traefik-forward-auth-secure:latest
         name: traefik-forward-auth
         ports:
         - containerPort: 4181

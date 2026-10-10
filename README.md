@@ -1,17 +1,21 @@
-
 # Traefik Forward Auth ![Build Status](https://img.shields.io/github/actions/workflow/status/priyankub/traefik-forward-auth-secure/ci.yml?branch=master) ![CodeQL Status](https://img.shields.io/github/actions/workflow/status/priyankub/traefik-forward-auth-secure/codeql-analysis.yml?branch=master) [![Go Report Card](https://goreportcard.com/badge/github.com/priyankub/traefik-forward-auth-secure)](https://goreportcard.com/report/github.com/priyankub/traefik-forward-auth-secure) [![GitHub release](https://img.shields.io/github/release/priyankub/traefik-forward-auth-secure.svg)](https://GitHub.com/priyankub/traefik-forward-auth-secure/releases/)
 
 
-A minimal forward authentication service that provides OAuth/SSO login and authentication for the [traefik](https://github.com/containous/traefik) reverse proxy/load balancer.
+A minimal forward authentication service that provides OAuth/SSO login and authentication for the [Traefik](https://github.com/traefik/traefik) reverse proxy/load balancer.
 
 ## Enhancements in this Fork
 
-This is a security and modernization-focused fork of [thomseddon/traefik-forward-auth](https://github.com/thomseddon/traefik-forward-auth). 
-It introduces several crucial improvements:
+This is a maintained, security-focused fork of [thomseddon/traefik-forward-auth](https://github.com/thomseddon/traefik-forward-auth). Configuration is compatible with upstream v2, so for most setups switching is just a change of image. What's different:
 
-- **Security Hardened**: Patched Open Redirect vulnerabilities, integrated fortress-grade URL validation, and resolved CodeQL taint tracking warnings.
-- **Robust Logout & Session Management**: Fixed multi-proxy `X-Forwarded-*` header parsing bugs and implemented comprehensive cookie clearance across all domain and subdomain permutations to ensure a complete and reliable logout.
-- **Modernized Stack**: Migrated the HTTP routing engine to support the Traefik v3 API, upgraded to Go 1.26+, and bumped all core dependencies to their latest secure versions (including `logrus`, `go-jose`, and `go-oidc`).
+- **Redirects are validated**: after login, users are only sent back to the requested host, or to the `auth-host` / a `cookie-domain` when those are set (fixes open redirects)
+- **Rules can't be bypassed with path tricks**: `X-Forwarded-Uri` is normalised (dot segments, missing leading slash, `//host` prefixes) before rules are matched
+- **`/ping` can't be used to skip auth**: it only answers direct health checks, not forwarded requests on protected hosts
+- **No trusting spoofable headers**: an `allow` rule that matches `X-Forwarded-For` or `Forwarded` stops startup (see [rules](#option-details))
+- **Logout works across subdomains**: the auth cookie is cleared for the host and every configured cookie domain
+- **Allowlist and domain matching are case-insensitive**
+- **Current stack**: built on Traefik v3's routing engine and Go 1.27, with dependencies kept up to date by Renovate and scanned with CodeQL and govulncheck
+
+Known gaps: abandoned logins can leave CSRF cookies behind until they expire (1 hour), and PKCE isn't supported yet.
 
 ## Why?
 
@@ -45,14 +49,21 @@ It introduces several crucial improvements:
     - [Overlay Mode](#overlay-mode)
     - [Auth Host Mode](#auth-host-mode)
   - [Logging Out](#logging-out)
+  - [Health Check](#health-check)
 - [Copyright](#copyright)
 - [License](#license)
 
 ## Releases
 
-You can download the latest pre-compiled binaries for AMD64 and ARM directly from [GitHub Releases](https://github.com/priyankub/traefik-forward-auth-secure/releases).
+A multi-arch Docker image (amd64, arm64) is published to the GitHub Container Registry:
 
-If you wish to use Docker, this fork is intended to be built from source. You can build the container image locally:
+```bash
+docker pull ghcr.io/priyankub/traefik-forward-auth-secure:latest
+```
+
+Binaries for Linux amd64, arm64 and armv7 are attached to each [GitHub Release](https://github.com/priyankub/traefik-forward-auth-secure/releases), with a `SHA256SUMS` file to verify them (`sha256sum -c SHA256SUMS`).
+
+To build the image yourself:
 
 ```bash
 git clone https://github.com/priyankub/traefik-forward-auth-secure.git
@@ -60,9 +71,10 @@ cd traefik-forward-auth-secure
 docker build -t traefik-forward-auth-secure .
 ```
 
-#### Upgrade Guide
+#### Upgrading
 
-v2 was released in June 2019, whilst this is fully backwards compatible, a number of configuration options were modified, please see the [upgrade guide](https://github.com/priyankub/traefik-forward-auth-secure/wiki/v2-Upgrade-Guide) to prevent warnings on startup and ensure you are using the current configuration.
+- **From upstream v2.x:** use the new image; existing flags, environment variables and rules keep working. If an `allow` rule matches `X-Forwarded-For` or `Forwarded`, rewrite it to match `X-Real-Ip` or the service won't start.
+- **From upstream v1:** some options were renamed in v2; see upstream's [v2 upgrade guide](https://github.com/thomseddon/traefik-forward-auth/wiki/v2-Upgrade-Guide).
 
 ## Usage
 
@@ -73,11 +85,9 @@ See below for instructions on how to setup your [Provider Setup](#provider-setup
 docker-compose.yml:
 
 ```yaml
-version: '3'
-
 services:
   traefik:
-    image: traefik:v2.2
+    image: traefik:v3.7
     command: --providers.docker
     ports:
       - "8085:80"
@@ -85,8 +95,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
 
   traefik-forward-auth:
-    build: ./traefik-forward-auth-secure # Or your local clone path
-    image: traefik-forward-auth-secure
+    image: ghcr.io/priyankub/traefik-forward-auth-secure:latest
     environment:
       - PROVIDERS_GOOGLE_CLIENT_ID=your-client-id
       - PROVIDERS_GOOGLE_CLIENT_SECRET=your-client-secret
@@ -98,7 +107,7 @@ services:
       - "traefik.http.services.traefik-forward-auth.loadbalancer.server.port=4181"
 
   whoami:
-    image: containous/whoami
+    image: traefik/whoami
     labels:
       - "traefik.http.routers.whoami.rule=Host(`whoami.mycompany.com`)"
       - "traefik.http.routers.whoami.middlewares=traefik-forward-auth"
@@ -106,13 +115,13 @@ services:
 
 #### Advanced:
 
-Please see the examples directory for a more complete [docker-compose.yml](https://github.com/priyankub/traefik-forward-auth-secure/blob/master/examples/traefik-v2/swarm/docker-compose.yml) or [kubernetes/simple-separate-pod](https://github.com/priyankub/traefik-forward-auth-secure/blob/master/examples/traefik-v2/kubernetes/simple-separate-pod/).
+The [examples](examples/) were written for Traefik v1.7 and v2 and may need adjusting for Traefik v3. See the examples directory for a more complete [docker-compose.yml](https://github.com/priyankub/traefik-forward-auth-secure/blob/master/examples/traefik-v2/swarm/docker-compose.yml) or [kubernetes/simple-separate-pod](https://github.com/priyankub/traefik-forward-auth-secure/blob/master/examples/traefik-v2/kubernetes/simple-separate-pod/).
 
 Also in the examples directory is [docker-compose-auth-host.yml](https://github.com/priyankub/traefik-forward-auth-secure/blob/master/examples/traefik-v2/swarm/docker-compose-auth-host.yml) and [kubernetes/advanced-separate-pod](https://github.com/priyankub/traefik-forward-auth-secure/blob/master/examples/traefik-v2/kubernetes/advanced-separate-pod/) which shows how to configure a central auth host, along with some other options.
 
 #### Provider Setup
 
-Below are some general notes on provider setup, specific instructions and examples for a number of providers can be found on the [Provider Setup](https://github.com/priyankub/traefik-forward-auth-secure/wiki/Provider-Setup) wiki page.
+Below are some general notes on provider setup, specific instructions and examples for a number of providers can be found on upstream's [Provider Setup](https://github.com/thomseddon/traefik-forward-auth/wiki/Provider-Setup) wiki page (it applies to this fork too).
 
 ##### Google
 
@@ -130,14 +139,14 @@ Any provider that supports OpenID Connect 1.0 can be configured via the OIDC con
 
 You must set the `providers.oidc.issuer-url`, `providers.oidc.client-id` and `providers.oidc.client-secret` config options.
 
-Please see the [Provider Setup](https://github.com/priyankub/traefik-forward-auth-secure/wiki/Provider-Setup) wiki page for examples.
+Please see the [Provider Setup](https://github.com/thomseddon/traefik-forward-auth/wiki/Provider-Setup) wiki page for examples.
 
 ##### Generic OAuth2
 
 For providers that don't support OpenID Connect, we also have the Generic OAuth2 provider where you can statically configure the OAuth2 and "user" endpoints.
 
 You must set:
-- `providers.generic-oauth.auth-url` - URL the client should be sent to authenticate the authenticate
+- `providers.generic-oauth.auth-url` - URL the user is sent to in order to authenticate
 - `providers.generic-oauth.token-url` - URL the service should call to exchange an auth code for an access token
 - `providers.generic-oauth.user-url` - URL used to retrieve user info (service makes a GET request)
 - `providers.generic-oauth.client-id` - Client ID
@@ -147,7 +156,7 @@ You can also set:
 - `providers.generic-oauth.scope`- Any scopes that should be included in the request (default: profile, email)
 - `providers.generic-oauth.token-style` - How token is presented when querying the User URL. Can be `header` or `query`, defaults to `header`. With `header` the token is provided in an Authorization header, with query the token is provided in the `access_token` query string value.
 
-Please see the [Provider Setup](https://github.com/priyankub/traefik-forward-auth-secure/wiki/Provider-Setup) wiki page for examples.
+Please see the [Provider Setup](https://github.com/thomseddon/traefik-forward-auth/wiki/Provider-Setup) wiki page for examples.
 
 ## Configuration
 
@@ -173,6 +182,7 @@ Application Options:
   --domain=                                             Only allow given email domains, can be set multiple times [$DOMAIN]
   --lifetime=                                           Lifetime in seconds (default: 43200) [$LIFETIME]
   --logout-redirect=                                    URL to redirect to following logout [$LOGOUT_REDIRECT]
+  --match-whitelist-or-domain                           Allow users that match *either* whitelist or domain [$MATCH_WHITELIST_OR_DOMAIN]
   --url-path=                                           Callback URL Path (default: /_oauth) [$URL_PATH]
   --secret=                                             Secret used for signing (required) [$SECRET]
   --whitelist=                                          Only allow given email addresses, can be set multiple times [$WHITELIST]
@@ -240,7 +250,7 @@ All options can be supplied in any of the following ways, in the following prece
 
 - `cookie-domain`
 
-  When set, if a user successfully completes authentication, then if the host of the original request requiring authentication is a subdomain of a given cookie domain, then the authentication cookie will be set for the higher level cookie domain. This means that a cookie can allow access to multiple subdomains without re-authentication. Can be specificed multiple times.
+  When set, if a user successfully completes authentication, then if the host of the original request requiring authentication is a subdomain of a given cookie domain, then the authentication cookie will be set for the higher level cookie domain. This means that a cookie can allow access to multiple subdomains without re-authentication. Can be specified multiple times.
 
    For example:
    ```
@@ -249,7 +259,7 @@ All options can be supplied in any of the following ways, in the following prece
 
    For example, if the cookie domain `test.com` has been set, and a request comes in on `app1.test.com`, following authentication the auth cookie will be set for the whole `test.com` domain. As such, if another request is forwarded for authentication from `app2.test.com`, the original cookie will be sent and so the request will be allowed without further authentication.
 
-   Beware however, if using cookie domains whilst running multiple instances of traefik/traefik-forward-auth for the same domain, the cookies will clash. You can fix this by using a different `cookie-name` in each host/cluster or by using the same `cookie-secret` in both instances.
+   Beware however, if using cookie domains whilst running multiple instances of traefik/traefik-forward-auth for the same domain, the cookies will clash. You can fix this by using a different `cookie-name` in each host/cluster or by using the same `secret` in both instances.
 
 - `insecure-cookie`
 
@@ -275,7 +285,7 @@ All options can be supplied in any of the following ways, in the following prece
 
 - `default-provider`
 
-   Set the default provider to use for authentication, this can be overridden within [rules](#rules). Valid options are currently `google` or `oidc`.
+   Set the default provider to use for authentication, this can be overridden within [rules](#rules). Valid options are `google`, `oidc` or `generic-oauth`.
 
    Default: `google`
 
@@ -300,8 +310,6 @@ All options can be supplied in any of the following ways, in the following prece
 - `match-whitelist-or-domain`
 
    When enabled, users will be permitted if they match *either* the `whitelist` or `domain` parameters.
-
-   This will be enabled by default in v3, but is disabled by default in v2 to maintain backwards compatibility.
 
    Default: `false`
 
@@ -340,7 +348,8 @@ All options can be supplied in any of the following ways, in the following prece
        - `provider` - same usage as [`default-provider`](#default-provider), supported values:
            - `google`
            - `oidc`
-       - `rule` - a rule to match a request, this uses traefik's v2 rule parser for which you can find the documentation here: https://docs.traefik.io/v2.0/routing/routers/#rule, supported values are summarised here:
+           - `generic-oauth`
+       - `rule` - a rule to match a request. Rules use Traefik **v2** rule syntax (documented [here](https://doc.traefik.io/traefik/v2.11/routing/routers/#rule)), even though this fork is built on Traefik v3's routing engine. Supported matchers are summarised here:
            - ``Headers(`key`, `value`)``
            - ``HeadersRegexp(`key`, `regexp`)``
            - ``Host(`example.com`, ...)``
@@ -351,11 +360,11 @@ All options can be supplied in any of the following ways, in the following prece
            - ``Query(`foo=bar`, `bar=baz`)``
 
          An `allow` rule may not match `X-Forwarded-For` or `Forwarded` (startup fails): clients can set those headers and a trusted proxy such as a CDN passes them on. To allow by source address, match the proxy-set `X-Real-Ip`, anchored, e.g. ``HeadersRegexp(`X-Real-Ip`, `^10\.0\.0\.`)``.
-       - `whitelist` - optional, same usage as whitelist`](#whitelist)
+       - `whitelist` - optional, same usage as [`whitelist`](#whitelist)
 
    For example:
    ```
-   # Allow requests that being with `/api/public` and contain the `Content-Type` header with a value of `application/json`
+   # Allow requests that begin with `/api/public` and contain the `Content-Type` header with a value of `application/json`
    rule.1.action = allow
    rule.1.rule = PathPrefix(`/api/public`) && Headers(`Content-Type`, `application/json`)
 
@@ -369,12 +378,12 @@ All options can be supplied in any of the following ways, in the following prece
    rule.oidc.rule = PathPrefix(`/github`)
 
    # Allow jane@example.com to `/janes-eyes-only`
-   rule.two.action = allow
-   rule.two.rule = Path(`/janes-eyes-only`)
-   rule.two.whitelist = jane@example.com
+   rule.jane.action = allow
+   rule.jane.rule = Path(`/janes-eyes-only`)
+   rule.jane.whitelist = jane@example.com
    ```
 
-   Note: It is possible to break your redirect flow with rules, please be careful not to create an `allow` rule that matches your redirect_uri unless you know what you're doing. This limitation is being tracked in in #101 and the behaviour will change in future releases.
+   Note: It is possible to break your redirect flow with rules, please be careful not to create an `allow` rule that matches your redirect_uri unless you know what you're doing. This limitation is tracked upstream in [#101](https://github.com/thomseddon/traefik-forward-auth/issues/101).
 
 ## Concepts
 
@@ -385,7 +394,7 @@ You can restrict who can login with the following parameters:
 * `domain` - Use this to limit logins to a specific domain, e.g. test.com only
 * `whitelist` - Use this to only allow specific users to login e.g. thom@test.com only
 
-Note, if you pass both `whitelist` and `domain`, then the default behaviour is for only `whitelist` to be used and `domain` will be effectively ignored. You can allow users matching *either* `whitelist` or `domain` by passing the `match-whitelist-or-domain` parameter (this will be the default behaviour in v3). If you set `domains` or `whitelist` on a rule, the global configuration is ignored.
+Note, if you pass both `whitelist` and `domain`, then the default behaviour is for only `whitelist` to be used and `domain` will be effectively ignored. You can allow users matching *either* `whitelist` or `domain` by passing the `match-whitelist-or-domain` parameter If you set `domains` or `whitelist` on a rule, the global configuration is ignored.
 
 ### Forwarded Headers
 
@@ -421,7 +430,7 @@ Note: Traefik prepends the namespace to the name of middleware defined via a kub
 If you choose not to enable forward authentication for a specific entrypoint, you can apply the middleware to selected ingressroutes:
 
 ```yaml
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: whoami
@@ -448,7 +457,7 @@ You can apply labels to selected containers:
 
 ```yaml
 whoami:
-  image: containous/whoami
+  image: traefik/whoami
   labels:
     - "traefik.http.routers.whoami.rule=Host(`whoami.example.com`)"
     - "traefik.http.routers.whoami.middlewares=traefik-forward-auth"
@@ -485,7 +494,7 @@ The user flow will be:
 5. User is redirected to `www.myapp.com/home`
 6. Request is allowed
 
-As the hostname in the `redirect_uri` is dynamically generated based on the original request, every hostname must be permitted in the Google OAuth console (e.g. `www.myappp.com` would need to be added in the above example)
+As the hostname in the `redirect_uri` is dynamically generated based on the original request, every hostname must be permitted in the Google OAuth console (e.g. `www.myapp.com` would need to be added in the above example)
 
 #### Auth Host Mode
 
@@ -514,15 +523,21 @@ Please note: For Auth Host mode to work, you must ensure that requests to your a
 
 ### Logging Out
 
-The service provides an endpoint to clear a users session and "log them out". The path is created by appending `/logout` to your configured `path` and so with the default settings it will be: `/_oauth/logout`.
+The service provides an endpoint to clear a user's session and "log them out". The path is created by appending `/logout` to your configured `url-path`, so with the default settings it is `/_oauth/logout`. The auth cookie is cleared for the request host and for every configured `cookie-domain`.
+
+This is also how users get out of "Not authorized" after signing in with an account that isn't allowed: send them to `/_oauth/logout` and they can sign in again with the right one. A friendly `/logout` route on your main domain that redirects there makes this easy to remember.
 
 You can use the `logout-redirect` config option to redirect users to another URL following logout (note: the user will not have a valid auth cookie after being logged out).
 
 Note: This only clears the auth cookie from the users browser and as this service is stateless, it does not invalidate the cookie against future use. So if the cookie was recorded, for example, it could continue to be used for the duration of the cookie lifetime.
 
+### Health Check
+
+`GET /ping` sent directly to the service (port 4181) returns `200 OK`, for container health checks. Requests forwarded by Traefik for a `/ping` path on a protected host still go through authentication.
+
 ## Copyright
 
-2018 Thom Seddon
+2018 Thom Seddon. Fork maintained by [priyankub](https://github.com/priyankub).
 
 ## License
 
