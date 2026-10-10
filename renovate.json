@@ -1,7 +1,7 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:recommended"],
-  "enabledManagers": ["gomod", "github-actions"],
+  "extends": ["config:recommended", "helpers:pinGitHubActionDigests"],
+  "enabledManagers": ["gomod", "github-actions", "dockerfile"],
   "forkProcessing": "enabled",
   "dependencyDashboard": true,
   "prHourlyLimit": 0,

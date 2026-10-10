@@ -3,55 +3,45 @@ name: Release
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to build and upload binaries for
+        required: true
+
+permissions:
+  contents: read
 
 jobs:
 
   build:
     name: Build release binaries
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
     steps:
     - name: Check out code
-      uses: actions/checkout@v7
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        ref: ${{ env.TAG }}
 
     - name: Set up Go
-      uses: actions/setup-go@v7
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
       with:
         go-version: '1.27'
-      id: go
 
-    - name: Build AMD64
-      run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on go build -a -installsuffix nocgo -v -o traefik-forward-auth_amd64 ./cmd
+    - name: Build binaries
+      run: |
+        build() { CGO_ENABLED=0 GOOS=linux GOARCH="$1" GOARM="$2" go build -trimpath -ldflags="-s -w" -o "traefik-forward-auth_$3" ./cmd; }
+        build amd64 "" amd64
+        build arm64 "" arm64
+        build arm 7 arm
+        sha256sum traefik-forward-auth_* > SHA256SUMS
 
-    - name: Build ARM
-      run: CGO_ENABLED=0 GOOS=linux GOARCH=arm GO111MODULE=on go build -a -installsuffix nocgo -v -o traefik-forward-auth_arm ./cmd
-
-    - name: Get tag name
-      run: echo "TAG=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
-
-    - name: Get artifact details
-      uses: octokit/request-action@v2.x
-      id: get_release_details
-      with:
-        route: get /repos/${{ github.repository }}/releases/tags/${{ env.TAG }}
+    - name: Upload release assets
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: Upload AMD64 release asset
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ fromJson(steps.get_release_details.outputs.data).upload_url }}
-        asset_path: traefik-forward-auth_amd64
-        asset_name: traefik-forward-auth_amd64
-        asset_content_type: application/octet-stream
-
-    - name: Upload ARM release asset
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ fromJson(steps.get_release_details.outputs.data).upload_url }}
-        asset_path: traefik-forward-auth_arm
-        asset_name: traefik-forward-auth_arm
-        asset_content_type: application/octet-stream
+        GH_TOKEN: ${{ github.token }}
+        GH_REPO: ${{ github.repository }}
+      run: gh release upload "$TAG" traefik-forward-auth_amd64 traefik-forward-auth_arm64 traefik-forward-auth_arm SHA256SUMS --clobber
