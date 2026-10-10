@@ -1,0 +1,15 @@
+# Traefik dynamic configuration, loaded by the file provider.
+#
+# The forward-auth middleware is declared here rather than as labels on the
+# traefik-forward-auth container. A container with labels gets a default
+# router in Traefik, which would make the auth service itself reachable from
+# outside. Declared here, the service stays private to the Docker network.
+#
+# Reference it from a router as `forward-auth@file`.
+http:
+  middlewares:
+    forward-auth:
+      forwardAuth:
+        address: http://traefik-forward-auth:4181
+        authResponseHeaders:
+          - X-Forwarded-User

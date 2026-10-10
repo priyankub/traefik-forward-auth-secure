@@ -1,0 +1,78 @@
+#
+# traefik-forward-auth in Auth Host mode: every login returns to
+# auth.example.com/_oauth, and the auth cookie covers all of example.com.
+#
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: traefik-forward-auth
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: traefik-forward-auth
+  template:
+    metadata:
+      labels:
+        app: traefik-forward-auth
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: traefik-forward-auth
+        image: ghcr.io/priyankub/traefik-forward-auth-secure:latest
+        ports:
+        - name: http
+          containerPort: 4181
+        env:
+        - name: CONFIG
+          value: /config/rules.ini
+        - name: AUTH_HOST
+          value: auth.example.com
+        - name: COOKIE_DOMAIN
+          value: example.com
+        - name: DOMAIN
+          value: example.com
+        - name: LOG_LEVEL
+          value: info
+        - name: LOG_FORMAT
+          value: json
+        # Every replica must share the same SECRET, or a cookie signed by one
+        # replica is rejected by the next.
+        envFrom:
+        - secretRef:
+            name: traefik-forward-auth
+        volumeMounts:
+        - name: rules
+          mountPath: /config
+          readOnly: true
+        # The kubelet calls /ping directly, so it answers without a login.
+        readinessProbe:
+          httpGet:
+            path: /ping
+            port: http
+        livenessProbe:
+          httpGet:
+            path: /ping
+            port: http
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          limits:
+            memory: 128Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: rules
+        configMap:
+          name: traefik-forward-auth-rules

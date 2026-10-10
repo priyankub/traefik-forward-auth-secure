@@ -1,4 +1,4 @@
-# Traefik Forward Auth ![Build Status](https://img.shields.io/github/actions/workflow/status/priyankub/traefik-forward-auth-secure/ci.yml?branch=master) ![CodeQL Status](https://img.shields.io/github/actions/workflow/status/priyankub/traefik-forward-auth-secure/codeql-analysis.yml?branch=master) [![Go Report Card](https://goreportcard.com/badge/github.com/priyankub/traefik-forward-auth-secure)](https://goreportcard.com/report/github.com/priyankub/traefik-forward-auth-secure) [![GitHub release](https://img.shields.io/github/release/priyankub/traefik-forward-auth-secure.svg)](https://GitHub.com/priyankub/traefik-forward-auth-secure/releases/)
+# Traefik Forward Auth ![Build Status](https://img.shields.io/github/actions/workflow/status/priyankub/traefik-forward-auth-secure/ci.yml?branch=master) ![CodeQL Status](https://img.shields.io/github/actions/workflow/status/priyankub/traefik-forward-auth-secure/codeql-analysis.yml?branch=master) [![Go Report Card](https://goreportcard.com/badge/github.com/priyankub/traefik-forward-auth-secure)](https://goreportcard.com/report/github.com/priyankub/traefik-forward-auth-secure) [![GitHub release](https://img.shields.io/github/v/release/priyankub/traefik-forward-auth-secure)](https://github.com/priyankub/traefik-forward-auth-secure/releases)
 
 
 A minimal forward authentication service that provides OAuth/SSO login and authentication for the [Traefik](https://github.com/traefik/traefik) reverse proxy/load balancer.
@@ -20,11 +20,11 @@ Known gaps: abandoned logins can leave CSRF cookies behind until they expire (1 
 ## Why?
 
 - Seamlessly overlays any http service with a single endpoint (see: `url-path` in [Configuration](#configuration))
-- Supports multiple providers including Google and OpenID Connect (supported by Azure, Github, Salesforce etc.)
+- Supports Google, any OpenID Connect provider (Microsoft Entra ID, Keycloak, Authentik, Authelia etc.) and generic OAuth2 providers such as GitHub
 - Supports multiple domains/subdomains by dynamically generating redirect_uri's
 - Allows authentication to be selectively applied/bypassed based on request parameters (see `rules` in [Configuration](#configuration))
 - Supports use of centralised authentication host/redirect_uri (see `auth-host` in [Configuration](#configuration))
-- Allows authentication to persist across multiple domains (see [Cookie Domains](#cookie-domains))
+- Allows authentication to persist across multiple domains (see `cookie-domain` in [Option Details](#option-details))
 - Supports extended authentication beyond Google token lifetime (see: `lifetime` in [Configuration](#configuration))
 
 # Contents
@@ -43,7 +43,7 @@ Known gaps: abandoned logins can leave CSRF cookies behind until they expire (1 
   - [Applying Authentication](#applying-authentication)
     - [Global Authentication](#global-authentication)
     - [Selective Ingress Authentication in Kubernetes](#selective-ingress-authentication-in-kubernetes)
-    - [Selective Container Authentication in Swarm](#selective-container-authentication-in-swarm)
+    - [Selective Container Authentication in Docker](#selective-container-authentication-in-docker)
     - [Rules Based Authentication](#rules-based-authentication)
   - [Operation Modes](#operation-modes)
     - [Overlay Mode](#overlay-mode)
@@ -80,44 +80,73 @@ docker build -t traefik-forward-auth-secure .
 
 #### Simple:
 
-See below for instructions on how to setup your [Provider Setup](#provider-setup).
+This protects one app with Google login over HTTPS. You'll need a Google OAuth client first (see [Provider Setup](#provider-setup)), with `https://whoami.example.com/_oauth` as an authorised redirect URI.
 
-docker-compose.yml:
+`dynamic.yml` declares the middleware:
+
+```yaml
+http:
+  middlewares:
+    forward-auth:
+      forwardAuth:
+        address: http://traefik-forward-auth:4181
+        authResponseHeaders:
+          - X-Forwarded-User
+```
+
+`docker-compose.yml`:
 
 ```yaml
 services:
   traefik:
     image: traefik:v3.7
-    command: --providers.docker
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedByDefault=false
+      - --providers.file.filename=/etc/traefik/dynamic.yml
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.websecure.address=:443
+      - --entrypoints.websecure.http.tls.certresolver=letsencrypt
+      - --certificatesresolvers.letsencrypt.acme.email=you@example.com
+      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.letsencrypt.acme.tlschallenge=true
     ports:
-      - "8085:80"
+      - "80:80"
+      - "443:443"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./dynamic.yml:/etc/traefik/dynamic.yml:ro
+      - letsencrypt:/letsencrypt
 
   traefik-forward-auth:
     image: ghcr.io/priyankub/traefik-forward-auth-secure:latest
     environment:
       - PROVIDERS_GOOGLE_CLIENT_ID=your-client-id
       - PROVIDERS_GOOGLE_CLIENT_SECRET=your-client-secret
-      - SECRET=something-random
-      - INSECURE_COOKIE=true # Example assumes no https, do not use in production
-    labels:
-      - "traefik.http.middlewares.traefik-forward-auth.forwardauth.address=http://traefik-forward-auth:4181"
-      - "traefik.http.middlewares.traefik-forward-auth.forwardauth.authResponseHeaders=X-Forwarded-User"
-      - "traefik.http.services.traefik-forward-auth.loadbalancer.server.port=4181"
+      - SECRET=something-random   # openssl rand -hex 32
+      - WHITELIST=you@example.com
 
   whoami:
     image: traefik/whoami
     labels:
-      - "traefik.http.routers.whoami.rule=Host(`whoami.mycompany.com`)"
-      - "traefik.http.routers.whoami.middlewares=traefik-forward-auth"
+      - traefik.enable=true
+      - traefik.http.routers.whoami.rule=Host(`whoami.example.com`)
+      - traefik.http.routers.whoami.entrypoints=websecure
+      - traefik.http.routers.whoami.middlewares=forward-auth@file
+
+volumes:
+  letsencrypt:
 ```
+
+The middleware lives in `dynamic.yml` rather than in labels on the auth container on purpose. Traefik gives any labelled container a router, which would make the auth service reachable from outside.
 
 #### Advanced:
 
-The [examples](examples/) were written for Traefik v1.7 and v2 and may need adjusting for Traefik v3. See the examples directory for a more complete [docker-compose.yml](https://github.com/priyankub/traefik-forward-auth-secure/blob/master/examples/traefik-v2/swarm/docker-compose.yml) or [kubernetes/simple-separate-pod](https://github.com/priyankub/traefik-forward-auth-secure/blob/master/examples/traefik-v2/kubernetes/simple-separate-pod/).
+The [examples](examples/) directory has tested setups for Traefik v3:
 
-Also in the examples directory is [docker-compose-auth-host.yml](https://github.com/priyankub/traefik-forward-auth-secure/blob/master/examples/traefik-v2/swarm/docker-compose-auth-host.yml) and [kubernetes/advanced-separate-pod](https://github.com/priyankub/traefik-forward-auth-secure/blob/master/examples/traefik-v2/kubernetes/advanced-separate-pod/) which shows how to configure a central auth host, along with some other options.
+- Docker Compose: [selective auth with Google](examples/docker-compose/docker-compose.yml), [with OpenID Connect](examples/docker-compose/docker-compose-oidc.yml), and [global auth with a central auth host and rules](examples/docker-compose/docker-compose-auth-host.yml)
+- Kubernetes: a [simple](examples/kubernetes/simple/) deployment and an [advanced](examples/kubernetes/advanced/) kustomize setup with an auth host and rules
 
 #### Provider Setup
 
@@ -125,7 +154,7 @@ Below are some general notes on provider setup, specific instructions and exampl
 
 ##### Google
 
-Head to https://console.developers.google.com and make sure you've switched to the correct email account.
+Head to the [Google Cloud console](https://console.cloud.google.com/apis/credentials) and make sure you've switched to the correct email account.
 
 Create a new project then search for and select "Credentials" in the search bar. Fill out the "OAuth Consent Screen" tab.
 
@@ -279,13 +308,13 @@ All options can be supplied in any of the following ways, in the following prece
 
 - `default-action`
 
-   Specifies the behavior when a request does not match any [rules](#rules). Valid options are `auth` or `allow`.
+   Specifies the behavior when a request does not match any [rules](#option-details). Valid options are `auth` or `allow`.
 
    Default: `auth` (i.e. all requests require authentication)
 
 - `default-provider`
 
-   Set the default provider to use for authentication, this can be overridden within [rules](#rules). Valid options are `google`, `oidc` or `generic-oauth`.
+   Set the default provider to use for authentication, this can be overridden within [rules](#option-details). Valid options are `google`, `oidc` or `generic-oauth`.
 
    Default: `google`
 
@@ -341,11 +370,11 @@ All options can be supplied in any of the following ways, in the following prece
 
    - `<name>` can be any string and is only used to group rules together
    - `<param>` can be:
-       - `action` - same usage as [`default-action`](#default-action), supported values:
+       - `action` - same usage as `default-action`, supported values:
            - `auth` (default)
            - `allow`
-       - `domains` - optional, same usage as [`domain`](#domain)
-       - `provider` - same usage as [`default-provider`](#default-provider), supported values:
+       - `domains` - optional, same usage as `domain`
+       - `provider` - same usage as `default-provider`, supported values:
            - `google`
            - `oidc`
            - `generic-oauth`
@@ -360,7 +389,7 @@ All options can be supplied in any of the following ways, in the following prece
            - ``Query(`foo=bar`, `bar=baz`)``
 
          An `allow` rule may not match `X-Forwarded-For` or `Forwarded` (startup fails): clients can set those headers and a trusted proxy such as a CDN passes them on. To allow by source address, match the proxy-set `X-Real-Ip`, anchored, e.g. ``HeadersRegexp(`X-Real-Ip`, `^10\.0\.0\.`)``.
-       - `whitelist` - optional, same usage as [`whitelist`](#whitelist)
+       - `whitelist` - optional, same usage as `whitelist`
 
    For example:
    ```
@@ -394,51 +423,42 @@ You can restrict who can login with the following parameters:
 * `domain` - Use this to limit logins to a specific domain, e.g. test.com only
 * `whitelist` - Use this to only allow specific users to login e.g. thom@test.com only
 
-Note, if you pass both `whitelist` and `domain`, then the default behaviour is for only `whitelist` to be used and `domain` will be effectively ignored. You can allow users matching *either* `whitelist` or `domain` by passing the `match-whitelist-or-domain` parameter If you set `domains` or `whitelist` on a rule, the global configuration is ignored.
+Note, if you pass both `whitelist` and `domain`, then the default behaviour is for only `whitelist` to be used and `domain` will be effectively ignored. You can allow users matching *either* `whitelist` or `domain` by passing the `match-whitelist-or-domain` parameter. If you set `domains` or `whitelist` on a rule, the global configuration is ignored.
 
 ### Forwarded Headers
 
-The authenticated user is set in the `X-Forwarded-User` header, to pass this on add this to the `authResponseHeaders` config option in traefik, as shown below in the [Applying Authentication](#applying-authentication) section.
+The authenticated user's email is set in the `X-Forwarded-User` header. To pass it on to your app, list it in the middleware's `authResponseHeaders`, as the examples do.
 
 ### Applying Authentication
 
-Authentication can be applied in a variety of ways, either globally across all requests, or selectively to specific containers/ingresses.
+Authentication can be applied globally to every request on an entrypoint, or selectively to chosen routers.
 
 #### Global Authentication
 
-This can be achieved by enabling forward authentication for an entire entrypoint, for example, with http only:
+Attach the middleware to the entrypoint in Traefik's static configuration, and every router on it is protected:
 
 ```ini
---entryPoints.http.address=:80
---entrypoints.http.http.middlewares=traefik-forward-auth # "default-traefik-forward-auth" on kubernetes
+--entrypoints.web.address=:80
+--entrypoints.web.http.redirections.entrypoint.to=websecure
+--entrypoints.websecure.address=:443
+--entrypoints.websecure.http.middlewares=forward-auth@file   # Docker, middleware from dynamic.yml
+# --entrypoints.websecure.http.middlewares=default-traefik-forward-auth@kubernetescrd   # Kubernetes
 ```
 
-Or https:
-
-```ini
---entryPoints.http.address=:80
---entryPoints.http.http.redirections.entryPoint.to=https
---entryPoints.http.http.redirections.entryPoint.scheme=https
---entryPoints.https.address=:443
---entrypoints.https.http.middlewares=traefik-forward-auth # "default-traefik-forward-auth" on kubernetes
-```
-
-Note: Traefik prepends the namespace to the name of middleware defined via a kubernetes resource. This is handled automatically when referencing the middleware from another resource in the same namespace (so the namespace does not need to be prepended when referenced). However the full name, including the namespace, must be used when referenced from static configuration (e.g. command arguments or config file), hence you must prepend the namespace to your traefik-forward-auth middleware reference, as shown in the comments above (e.g. `default-traefik-forward-auth` if your middleware is named `traefik-forward-auth` and is defined in the `default` namespace).
+On Kubernetes, a middleware referenced from static configuration takes the form `<namespace>-<name>@kubernetescrd`, e.g. `default-traefik-forward-auth@kubernetescrd` for a middleware named `traefik-forward-auth` in the `default` namespace. See [docker-compose-auth-host.yml](examples/docker-compose/docker-compose-auth-host.yml) for a complete example.
 
 #### Selective Ingress Authentication in Kubernetes
 
-If you choose not to enable forward authentication for a specific entrypoint, you can apply the middleware to selected ingressroutes:
+Without global authentication, add the middleware to the IngressRoutes you want to protect:
 
 ```yaml
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: whoami
-  labels:
-    app: whoami
 spec:
   entryPoints:
-    - http
+    - websecure
   routes:
   - match: Host(`whoami.example.com`)
     kind: Rule
@@ -447,23 +467,26 @@ spec:
         port: 80
     middlewares:
       - name: traefik-forward-auth
+  tls: {}
 ```
 
-See the examples directory for more examples.
+See [examples/kubernetes](examples/kubernetes/) for complete setups.
 
-#### Selective Container Authentication in Swarm
+#### Selective Container Authentication in Docker
 
-You can apply labels to selected containers:
+Add the middleware to the routers of the containers you want to protect:
 
 ```yaml
 whoami:
   image: traefik/whoami
   labels:
-    - "traefik.http.routers.whoami.rule=Host(`whoami.example.com`)"
-    - "traefik.http.routers.whoami.middlewares=traefik-forward-auth"
+    - traefik.enable=true
+    - traefik.http.routers.whoami.rule=Host(`whoami.example.com`)
+    - traefik.http.routers.whoami.entrypoints=websecure
+    - traefik.http.routers.whoami.middlewares=forward-auth@file
 ```
 
-See the examples directory for more examples.
+See [examples/docker-compose](examples/docker-compose/) for complete setups.
 
 #### Rules Based Authentication
 
@@ -490,7 +513,7 @@ The user flow will be:
 1. Request to `www.myapp.com/home`
 2. User redirected to Google login
 3. After Google login, user is redirected to `www.myapp.com/_oauth`
-4. Token, user and CSRF cookie is validated (this request in intercepted and is never passed to your application)
+4. Token, user and CSRF cookie is validated (this request is intercepted and never passed to your application)
 5. User is redirected to `www.myapp.com/home`
 6. Request is allowed
 
@@ -498,7 +521,7 @@ As the hostname in the `redirect_uri` is dynamically generated based on the orig
 
 #### Auth Host Mode
 
-This is an optional mode of operation that is useful when dealing with a large number of subdomains, it is activated by using the `auth-host` config option (see [this example docker-compose.yml](https://github.com/priyankub/traefik-forward-auth-secure/blob/master/examples/traefik-v2/swarm/docker-compose-auth-host.yml) or [this kubernetes example](https://github.com/priyankub/traefik-forward-auth-secure/tree/master/examples/traefik-v2/kubernetes/advanced-separate-pod)).
+This is an optional mode of operation that is useful when dealing with a large number of subdomains, it is activated by using the `auth-host` config option (see [this Docker Compose example](examples/docker-compose/docker-compose-auth-host.yml) or [this Kubernetes example](examples/kubernetes/advanced/)).
 
 For example, if you have a few applications: `app1.test.com`, `app2.test.com`, `appN.test.com`, adding every domain to Google's console can become laborious.
 To utilise an auth host, permit domain level cookies by setting the cookie domain to `test.com` then set the `auth-host` to: `auth.test.com`.
@@ -519,7 +542,7 @@ Two criteria must be met for an `auth-host` to be used:
 1. Request matches given `cookie-domain`
 2. `auth-host` is also subdomain of same `cookie-domain`
 
-Please note: For Auth Host mode to work, you must ensure that requests to your auth-host are routed to the traefik-forward-auth container, as demonstrated with the service labels in the [docker-compose-auth.yml](https://github.com/priyankub/traefik-forward-auth-secure/blob/master/examples/traefik-v2/swarm/docker-compose-auth-host.yml) example and the [ingressroute resource](https://github.com/priyankub/traefik-forward-auth-secure/blob/master/examples/traefik-v2/kubernetes/advanced-separate-pod/traefik-forward-auth/ingress.yaml) in a kubernetes example.
+Please note: For Auth Host mode to work, you must ensure that requests to your auth-host are routed to the traefik-forward-auth container, as shown by the router labels in [docker-compose-auth-host.yml](examples/docker-compose/docker-compose-auth-host.yml) and the [IngressRoute](examples/kubernetes/advanced/traefik-forward-auth/ingressroute.yaml) in the Kubernetes example.
 
 ### Logging Out
 

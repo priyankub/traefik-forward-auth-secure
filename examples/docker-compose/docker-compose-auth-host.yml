@@ -1,0 +1,71 @@
+# Global authentication with a central auth host.
+#
+# Every router on the websecure entrypoint is protected, so a new app is
+# behind login as soon as it gets a router. Logins all return to
+# auth.example.com/_oauth, so that is the only redirect URI the Google client
+# needs, and the auth cookie is set for the whole example.com domain.
+#
+# To leave a router public, add an allow rule (see rules.ini) rather than
+# trying to skip the entrypoint middleware.
+services:
+  traefik:
+    image: traefik:v3.7
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedByDefault=false
+      - --providers.file.filename=/etc/traefik/dynamic.yml
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --entrypoints.websecure.address=:443
+      - --entrypoints.websecure.http.tls.certresolver=letsencrypt
+      - --entrypoints.websecure.http.middlewares=forward-auth@file
+      - --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}
+      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.letsencrypt.acme.tlschallenge=true
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./dynamic.yml:/etc/traefik/dynamic.yml:ro
+      - letsencrypt:/letsencrypt
+    restart: unless-stopped
+
+  traefik-forward-auth:
+    image: ghcr.io/priyankub/traefik-forward-auth-secure:latest
+    environment:
+      - PROVIDERS_GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - PROVIDERS_GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - SECRET=${SECRET}
+      - WHITELIST=${WHITELIST}
+      - AUTH_HOST=auth.example.com
+      - COOKIE_DOMAIN=example.com
+      - CONFIG=/rules.ini
+      - LOG_LEVEL=info
+    volumes:
+      - ./rules.ini:/rules.ini:ro
+    labels:
+      # The auth host needs a router so Traefik accepts requests for it; the
+      # entrypoint middleware then handles the login callback.
+      - traefik.enable=true
+      - traefik.http.routers.auth.rule=Host(`auth.example.com`)
+      - traefik.http.routers.auth.entrypoints=websecure
+      - traefik.http.services.auth.loadbalancer.server.port=4181
+    user: "65534:65534"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+  whoami:
+    image: traefik/whoami
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.whoami.rule=Host(`whoami.example.com`)
+      - traefik.http.routers.whoami.entrypoints=websecure
+
+volumes:
+  letsencrypt:

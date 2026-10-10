@@ -1,0 +1,3 @@
+# Filled-in secrets: only the *.example templates belong in git
+docker-compose/.env
+kubernetes/advanced/traefik-forward-auth/secrets/*.env

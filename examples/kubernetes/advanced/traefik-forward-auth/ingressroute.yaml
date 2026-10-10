@@ -1,0 +1,24 @@
+#
+# The auth host. Logins return here, so it is the only redirect URI the
+# OAuth provider needs: https://auth.example.com/_oauth
+#
+# The middleware runs first and handles the callback; the service behind the
+# route is only there so Traefik accepts requests for this host.
+#
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: traefik-forward-auth
+spec:
+  entryPoints:
+  - websecure
+  routes:
+  - match: Host(`auth.example.com`)
+    kind: Rule
+    middlewares:
+    - name: traefik-forward-auth
+    services:
+    - name: traefik-forward-auth
+      port: 4181
+  # Uses Traefik's default certificate; set certResolver to use ACME.
+  tls: {}
