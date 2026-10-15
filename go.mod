@@ -6,11 +6,11 @@ toolchain go1.27.2
 
 require (
 	github.com/coreos/go-oidc v2.5.0+incompatible
-	github.com/go-jose/go-jose/v4 v4.1.5
+	github.com/go-jose/go-jose/v4 v4.1.6
 	github.com/sirupsen/logrus v1.10.2
 	github.com/stretchr/testify v1.12.1
 	github.com/thomseddon/go-flags v1.4.1-0.20190507184247-a3629c504486
-	github.com/traefik/traefik/v3 v3.7.14
+	github.com/traefik/traefik/v3 v3.7.15
 	golang.org/x/oauth2 v0.37.0
 )
 
